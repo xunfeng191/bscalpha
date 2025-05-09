@@ -56,6 +56,10 @@
             cursor: pointer;
             color: #dc3545;
         }
+        .wallet-addresses {
+            min-height: 100px;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
@@ -65,39 +69,25 @@
         <div class="card mb-4">
             <div class="card-body">
                 <form id="analyzeForm">
-                    <div id="walletsContainer">
-                        <div class="wallet-input">
-                            <div class="input-group">
-                                <input type="text" class="form-control" placeholder="输入0x开头的BSC钱包地址" required>
-                                <div class="input-group-append">
-                                    <span class="input-group-text remove-wallet">
-                                        <i class="bi bi-x-circle"></i>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <button type="button" id="addWalletBtn" class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-plus-circle"></i> 添加钱包地址
-                    </button>
-                    
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">日期范围</label>
-                            <div class="input-group">
-                                <input type="date" class="form-control" id="startDate">
-                                <span class="input-group-text">至</span>
-                                <input type="date" class="form-control" id="endDate">
-                            </div>
-                            <small class="text-muted">不填默认查询今天</small>
+                        <div class="col-md-8">
+                            <label class="form-label">BSC 钱包地址（支持带名称，每行一个）</label>
+                            <textarea class="form-control wallet-addresses" rows="5" placeholder="输入格式：
+名称 0x开头的BSC钱包地址
+例如：
+念安1 0xXX
+念安2 0xXX" required></textarea>
+                            <small class="text-muted">每行一个地址，可以在地址前加名称（用空格分隔）</small>
                         </div>
                         <div class="col-md-4">
-                            <label for="apiKey" class="form-label">BSCScan API Key</label>
-                            <input type="text" class="form-control" id="apiKey" value="4SJP83HZQVQ9GZZYMXJB9NMIDFQ86BCAFJ">
-                            <small class="text-muted"><a href="https://bscscan.com/myapikey" target="_blank">获取API Key</a></small>
+                            <label for="date" class="form-label">统计日期</label>
+                            <input type="date" class="form-control" id="date">
+                            <small class="text-muted">不填默认统计今天8:00到明天8:00的数据</small>
                         </div>
-                        <div class="col-md-2 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary w-100">
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">
                                 <span class="normal-text">分析</span>
                                 <span class="spinner-border spinner-border-sm hidden" id="submitSpinner" role="status"></span>
                             </button>
@@ -116,72 +106,27 @@
                     <h4>分析结果</h4>
                     <p class="text-muted mb-0" id="timeRangeInfo"></p>
                 </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="stats-box bg-light">
-                                <h5>交易统计</h5>
-                                <div class="d-flex justify-content-between">
-                                    <span>总交易次数:</span>
-                                    <span id="totalTx" class="fw-bold"></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>成功交易:</span>
-                                    <span id="successTx" class="fw-bold"></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>失败交易:</span>
-                                    <span id="failedTx" class="fw-bold"></span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="stats-box bg-light">
-                                <h5>交易金额</h5>
-                                <div class="d-flex justify-content-between">
-                                    <span>买入总额:</span>
-                                    <span id="totalBuy" class="fw-bold text-success"></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>卖出总额:</span>
-                                    <span id="totalSell" class="fw-bold text-danger"></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Gas消耗:</span>
-                                    <span id="totalGas" class="fw-bold"></span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="stats-box bg-light">
-                                <h5>收益分析</h5>
-                                <div class="d-flex justify-content-between">
-                                    <span>交易盈亏:</span>
-                                    <span id="profitLoss" class="fw-bold"></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>净盈亏:</span>
-                                    <span id="netProfitLoss" class="fw-bold"></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>当前余额:</span>
-                                    <span id="currentBalance" class="fw-bold"></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
-            <h4>交易明细</h4>
+            <!-- 账户分析结果容器 -->
+            <div id="accountsContainer"></div>
+
             <div id="noTradesMessage" class="alert alert-info hidden">在指定时间范围内没有找到交易</div>
-            <div id="tradesContainer"></div>
         </div>
         
         <div class="mt-4 text-center">
+            <p class="text-muted mb-2">
+                作者: 东东 
+                <a href="https://x.com/lumaodaren" target="_blank" class="text-decoration-none">
+                    <i class="bi bi-twitter-x"></i> @lumaodaren
+                </a>
+            </p>
             <p class="text-muted">
-                本工具在GitHub Pages上运行，无需服务器 | 
-                <a href="https://github.com/你的用户名/bsc-trading-analyzer" target="_blank">查看源码</a>
+                <a href="https://github.com/sincitysh/bscalpha" target="_blank" class="text-decoration-none">
+                    <i class="bi bi-github"></i> 查看源码
+                </a>
+                |
+                本工具在GitHub Pages上运行，无需服务器
             </p>
         </div>
     </div>
@@ -189,18 +134,11 @@
     <!-- 添加Web3.js库 -->
     <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
     
+    <!-- 添加Bootstrap的JavaScript依赖 -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    
     <script>
-        // 保存API Key到本地存储
-        function saveApiKey(apiKey) {
-            if (apiKey) {
-                localStorage.setItem('bscScanApiKey', apiKey);
-            }
-        }
-        
-        // 从本地存储获取API Key
-        function getApiKey() {
-            return localStorage.getItem('bscScanApiKey') || '';
-        }
+        const DEFAULT_API_KEY = 'IQ3RMA9IIBCAE4ITKUXCBATEQ3D9R2TKRP';
         
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('analyzeForm');
@@ -209,64 +147,46 @@
             const resultContainer = document.getElementById('resultContainer');
             const submitSpinner = document.getElementById('submitSpinner');
             const noTradesMessage = document.getElementById('noTradesMessage');
-            const apiKeyInput = document.getElementById('apiKey');
             
-            // 设置已保存的API Key
-            apiKeyInput.value = getApiKey();
-            
-            // 添加钱包地址输入框
-            const addWalletBtn = document.getElementById('addWalletBtn');
-            const walletsContainer = document.getElementById('walletsContainer');
-            
-            addWalletBtn.addEventListener('click', function() {
-                const walletInput = document.createElement('div');
-                walletInput.className = 'wallet-input';
-                walletInput.innerHTML = `
-                    <div class="input-group">
-                        <input type="text" class="form-control" placeholder="输入0x开头的BSC钱包地址" required>
-                        <div class="input-group-append">
-                            <span class="input-group-text remove-wallet">
-                                <i class="bi bi-x-circle"></i>
-                            </span>
-                        </div>
-                    </div>
-                `;
-                walletsContainer.appendChild(walletInput);
-            });
-            
-            // 删除钱包地址输入框
-            walletsContainer.addEventListener('click', function(e) {
-                if (e.target.closest('.remove-wallet')) {
-                    const walletInput = e.target.closest('.wallet-input');
-                    if (walletsContainer.children.length > 1) {
-                        walletInput.remove();
-                    }
-                }
-            });
-            
-            // 修改表单提交处理
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
-                // 获取所有钱包地址
-                const walletInputs = walletsContainer.querySelectorAll('input');
-                const addresses = Array.from(walletInputs).map(input => input.value.trim());
+                // 获取并处理钱包地址
+                const addressesText = form.querySelector('.wallet-addresses').value;
+                const addressEntries = addressesText.split('\n')
+                    .map(line => {
+                        const parts = line.trim().split(/[\s\t]+/);
+                        if (parts.length >= 2) {
+                            return {
+                                name: parts[0],
+                                address: parts[parts.length - 1].trim()
+                            };
+                        } else if (parts.length === 1 && parts[0]) {
+                            return {
+                                name: '未命名',
+                                address: parts[0].trim()
+                            };
+                        }
+                        return null;
+                    })
+                    .filter(Boolean);
                 
                 // 验证地址
-                for (const address of addresses) {
-                    if (!isValidAddress(address)) {
-                        errorMessage.textContent = `无效的钱包地址格式: ${address}`;
+                for (const entry of addressEntries) {
+                    if (!isValidAddress(entry.address)) {
+                        errorMessage.textContent = `无效的钱包地址格式: ${entry.address}`;
                         errorMessage.classList.remove('hidden');
                         return;
                     }
                 }
+
+                if (addressEntries.length === 0) {
+                    errorMessage.textContent = '请至少输入一个钱包地址';
+                    errorMessage.classList.remove('hidden');
+                    return;
+                }
                 
-                const startDate = document.getElementById('startDate').value;
-                const endDate = document.getElementById('endDate').value;
-                const apiKey = document.getElementById('apiKey').value.trim();
-                
-                // 保存API Key
-                saveApiKey(apiKey);
+                const date = document.getElementById('date').value;
                 
                 // 显示加载状态
                 toggleLoading(true);
@@ -275,24 +195,46 @@
                 resultContainer.classList.add('hidden');
                 
                 try {
-                    if (!apiKey) {
-                        throw new Error('请输入BSCScan API Key');
-                    }
-                    
                     // 获取时间范围
-                    const timeRange = getTimeRangeTimestamps(startDate, endDate);
+                    const timeRange = getTimeRangeTimestamps(date);
                     
                     // 获取所有地址的交易
                     let allTransactions = [];
-                    for (const address of addresses) {
-                        const transactions = await getAddressTransactions(address, timeRange, apiKey);
-                        allTransactions = allTransactions.concat(transactions);
+                    const errors = [];
+                    
+                    // 串行处理每个地址，避免并发请求
+                    for (const entry of addressEntries) {
+                        try {
+                            const transactions = await getAddressTransactions(entry.address, timeRange, DEFAULT_API_KEY);
+                            allTransactions = allTransactions.concat(transactions.map(tx => ({...tx, accountName: entry.name})));
+                        } catch (error) {
+                            errors.push(`${entry.name}: ${error.message}`);
+                            console.error(`处理地址 ${entry.name} 时出错:`, error);
+                        }
+                    }
+                    
+                    // 如果有错误但仍有一些成功的结果，显示警告
+                    if (errors.length > 0) {
+                        const warningDiv = document.createElement('div');
+                        warningDiv.className = 'alert alert-warning';
+                        warningDiv.innerHTML = `
+                            <h5>部分数据获取失败</h5>
+                            <ul class="mb-0">
+                                ${errors.map(err => `<li>${err}</li>`).join('')}
+                            </ul>
+                        `;
+                        resultContainer.insertBefore(warningDiv, resultContainer.firstChild);
+                    }
+                    
+                    // 如果完全没有数据，显示错误
+                    if (allTransactions.length === 0 && errors.length > 0) {
+                        throw new Error('所有地址的数据获取均失败');
                     }
                     
                     if (allTransactions.length === 0) {
                         resultContainer.classList.remove('hidden');
                         noTradesMessage.classList.remove('hidden');
-                        document.getElementById('timeRangeInfo').textContent = `统计时间: ${formatDateTime(new Date(timeRange.startTimestamp * 1000))} 至 ${formatDateTime(new Date(timeRange.endTimestamp * 1000))}`;
+                        document.getElementById('timeRangeInfo').textContent = `统计时间: ${formatDateTime(timeRange.startDate)} 至 ${formatDateTime(timeRange.endDate)}`;
                         return;
                     }
                     
@@ -301,18 +243,18 @@
                     
                     // 获取所有地址的BNB余额总和
                     let totalBalance = 0;
-                    for (const address of addresses) {
-                        const balance = await getBNBBalance(address);
+                    for (const entry of addressEntries) {
+                        const balance = await getBNBBalance(entry.address);
                         totalBalance += parseFloat(balance);
                     }
                     
                     // 分析交易
-                    const analysis = await analyzeTransactions(addresses[0], allTransactions, timeRange, bnbPrice, totalBalance);
+                    const analysis = await analyzeTransactions(addressEntries[0], allTransactions, timeRange, bnbPrice, totalBalance);
                     
                     // 渲染结果
-                    renderResults({
+                    await renderResults({
                         success: true,
-                        addresses,
+                        addressEntries,
                         analysis
                     });
                     
@@ -368,52 +310,70 @@
             
             // 获取地址交易
             async function getAddressTransactions(address, timeRange, apiKey) {
-                try {
-                    const { startTimestamp, endTimestamp } = timeRange;
-                    
-                    const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${startTimestamp}&endtime=${endTimestamp}&sort=asc&apikey=${apiKey}`;
-                    
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    
-                    if (data.status === '1' && Array.isArray(data.result)) {
-                        return data.result;
-                    } else {
-                        throw new Error(`BSCScan API错误: ${data.message || '未知错误'}`);
+                const maxRetries = 3;
+                const retryDelay = 2000; // 2秒延迟
+                let lastError = null;
+
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const { startTimestamp, endTimestamp } = timeRange;
+                        
+                        // 添加随机延迟，避免并发请求
+                        if (attempt > 1) {
+                            await new Promise(resolve => setTimeout(resolve, retryDelay + Math.random() * 1000));
+                        }
+                        
+                        const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${startTimestamp}&endtime=${endTimestamp}&sort=asc&apikey=${apiKey}`;
+                        
+                        const response = await fetch(url);
+                        const data = await response.json();
+                        
+                        if (data.status === '1' && Array.isArray(data.result)) {
+                            return data.result;
+                        } else if (data.status === '0' && data.message.includes('No transactions found')) {
+                            return []; // 没有交易记录，返回空数组
+                        } else if (attempt === maxRetries) {
+                            throw new Error(`BSCScan API错误: ${data.message || '未知错误'}`);
+                        }
+                        
+                        lastError = new Error(data.message || '未知错误');
+                        console.log(`第${attempt}次尝试失败，将在${retryDelay/1000}秒后重试...`);
+                        
+                    } catch (error) {
+                        lastError = error;
+                        if (attempt === maxRetries) {
+                            throw new Error(`获取交易记录失败 (${attempt}/${maxRetries}次尝试): ${error.message}`);
+                        }
+                        console.log(`第${attempt}次尝试失败，将在${retryDelay/1000}秒后重试...`);
                     }
-                } catch (error) {
-                    throw new Error(`获取交易记录失败: ${error.message}`);
                 }
+                
+                throw lastError;
             }
             
             // 修改时间范围获取函数
-            function getTimeRangeTimestamps(startDateStr = '', endDateStr = '') {
+            function getTimeRangeTimestamps(dateStr = '') {
                 const now = new Date();
                 let startDate, endDate;
                 
-                if (startDateStr && endDateStr) {
-                    // 如果提供了日期范围，使用每天的8:00
-                    startDate = new Date(startDateStr);
+                if (dateStr) {
+                    // 如果提供了日期，使用该日期的8:00到次日8:00
+                    startDate = new Date(dateStr);
                     startDate.setHours(8, 0, 0, 0);
-                    
-                    // 结束日期使用次日8:00
-                    endDate = new Date(endDateStr);
-                    endDate.setDate(endDate.getDate() + 1);
-                    endDate.setHours(8, 0, 0, 0);
                 } else {
-                    // 如果没有提供日期，统计从今天8点到明天8点
+                    // 如果没有提供日期，使用今天8:00到明天8:00
                     startDate = new Date(now);
                     startDate.setHours(8, 0, 0, 0);
                     
-                    // 如果当前时间早于8点，需要统计前一天8点到今天8点
+                    // 如果当前时间早于8点，使用前一天8点到今天8点
                     if (now.getHours() < 8) {
                         startDate.setDate(startDate.getDate() - 1);
                     }
-                    
-                    // 结束时间为第二天早上8点
-                    endDate = new Date(startDate);
-                    endDate.setDate(endDate.getDate() + 1);
                 }
+                
+                // 结束时间总是开始时间的第二天早上8点
+                endDate = new Date(startDate);
+                endDate.setDate(endDate.getDate() + 1);
                 
                 // 转换为时间戳（秒）
                 const startTimestamp = Math.floor(startDate.getTime() / 1000);
@@ -423,19 +383,27 @@
             }
             
             // 解析交易数据
-            async function analyzeTransactions(address, transactions, timeRange, bnbPrice, bnbBalance) {
+            async function analyzeTransactions(addressInfo, transactions, timeRange, bnbPrice, bnbBalance) {
                 // 定义路由地址
                 const routerAddresses = {
                     'PancakeSwap': '0x10ED43C718714eb63d5aA57B78B54704E256024E'.toLowerCase(),
                     'BiSwap': '0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8'.toLowerCase(),
                     'BaseSwap': '0x13f4EA83D0bd40E75C8222255bc855a974568Dd4'.toLowerCase(),
-                    'BaseSwapRouter': '0xb300000b72deaeb607a12d5f54773d1c19c7028d'.toLowerCase()
+                    'BaseSwapRouter': '0xb300000b72deaeb607a12d5f54773d1c19c7028d'.toLowerCase(),
+                    'NewRouter': '0x4cf76043b3f97ba06917cbb253cd13d26941e742'.toLowerCase()
                 };
+
+                // 定义特殊地址
+                const SPECIAL_ADDRESSES = [
+                    '0x5efc784d444126ecc05f22c49ff3fbd7d9f4868a'.toLowerCase(),
+                    '0xde9e4FE32B049f821c7f3e9802381aa470FFCA73'.toLowerCase()
+                ];
                 
-                // 初始化分析结果
                 const analysis = {
-                    address: address,
+                    name: addressInfo.name,
+                    address: addressInfo.address,
                     totalTx: 0,
+                    totalGasUsed: 0,
                     totalGasCost: 0,
                     totalGasCostUSD: 0,
                     trades: [],
@@ -446,19 +414,19 @@
                     bnbPrice: bnbPrice,
                     failedTx: 0,
                     bnbBalance: parseFloat(bnbBalance),
-                    timeRange: {
-                        start: new Date(timeRange.startTimestamp * 1000).toISOString(),
-                        end: new Date(timeRange.endTimestamp * 1000).toISOString()
-                    }
+                    timeRange: timeRange
                 };
                 
-                // Web3实例
                 const web3 = new Web3('https://bsc-dataseed.binance.org/');
                 
-                // 筛选和分析交易
-                for (const tx of transactions) {
+                // 过滤指定时间范围内的交易
+                const filteredTransactions = transactions.filter(tx => {
+                    const txTime = parseInt(tx.timeStamp);
+                    return txTime >= timeRange.startTimestamp && txTime <= timeRange.endTimestamp;
+                });
+                
+                for (const tx of filteredTransactions) {
                     try {
-                        // 跳过失败的交易
                         if (tx.isError === "1") {
                             analysis.failedTx++;
                             continue;
@@ -477,7 +445,41 @@
                             const gasCost = web3.utils.fromWei((BigInt(tx.gasUsed) * BigInt(tx.gasPrice)).toString(), 'ether');
                             const gasCostUSD = parseFloat(gasCost) * bnbPrice;
                             
-                            // 根据value判断交易类型
+                            // 检查WBNB转账事件来确定交易类型和金额
+                            const receipt = await web3.eth.getTransactionReceipt(tx.hash);
+                            const wbnbAddress = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c'.toLowerCase();
+                            let bnbReceived = '0';
+                            let isSell = false;
+                            
+                            // 遍历所有日志，找到最大的相关WBNB转账
+                            for (const log of receipt.logs) {
+                                if (log.address.toLowerCase() === wbnbAddress && 
+                                    log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
+                                    
+                                    const from = '0x' + log.topics[1].slice(26).toLowerCase();
+                                    const to = '0x' + log.topics[2].slice(26).toLowerCase();
+                                    const amount = web3.utils.fromWei(log.data, 'ether');
+                                    
+                                    // 检查是否是卖出到特殊地址
+                                    if (SPECIAL_ADDRESSES.includes(to)) {
+                                        if (parseFloat(amount) > parseFloat(bnbReceived)) {
+                                            bnbReceived = amount;
+                                            isSell = true;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            const timestamp = new Date(parseInt(tx.timeStamp) * 1000).toLocaleString('zh-CN', { 
+                                timeZone: 'Asia/Shanghai',
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                            });
+                            
                             if (parseFloat(value) > 0) {
                                 // 买入交易
                                 const buyValue = parseFloat(value);
@@ -487,27 +489,28 @@
                                 analysis.trades.push({
                                     type: 'buy',
                                     hash: tx.hash,
-                                    timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
+                                    timestamp: timestamp,
                                     value: buyValue,
                                     gasCost: parseFloat(gasCost),
                                     gasCostUSD: gasCostUSD,
-                                    dex: dex
+                                    dex: dex,
+                                    accountName: tx.accountName
                                 });
-                            } else {
-                                // 卖出交易 (简化版，实际上需要分析事件日志)
-                                // 由于我们无法在前端直接分析事件日志，这里使用简化的启发式方法
-                                const sellValue = parseFloat(value) || 0.01; // 简化版，实际值需要从日志中提取
+                            } else if (isSell && parseFloat(bnbReceived) > 0) {
+                                // 卖出交易
+                                const sellValue = parseFloat(bnbReceived);
                                 analysis.totalSellValue += sellValue;
                                 analysis.profitLoss += sellValue;
                                 
                                 analysis.trades.push({
                                     type: 'sell',
                                     hash: tx.hash,
-                                    timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
-                                    value: sellValue, 
+                                    timestamp: timestamp,
+                                    value: sellValue,
                                     gasCost: parseFloat(gasCost),
                                     gasCostUSD: gasCostUSD,
-                                    dex: dex
+                                    dex: dex,
+                                    accountName: tx.accountName
                                 });
                             }
                             
@@ -525,98 +528,237 @@
                 return analysis;
             }
             
-            function renderResults(data) {
-                const analysis = data.analysis;
-                
-                // 设置统计数据
-                document.getElementById('totalTx').textContent = analysis.totalTx;
-                document.getElementById('successTx').textContent = analysis.totalTx;
-                document.getElementById('failedTx').textContent = analysis.failedTx;
-                
-                const bnbPrice = analysis.bnbPrice;
-                
-                // 设置交易金额
-                document.getElementById('totalBuy').textContent = `${analysis.totalBuyValue.toFixed(6)} BNB ($${(analysis.totalBuyValue * bnbPrice).toFixed(2)})`;
-                document.getElementById('totalSell').textContent = `${analysis.totalSellValue.toFixed(6)} BNB ($${(analysis.totalSellValue * bnbPrice).toFixed(2)})`;
-                document.getElementById('totalGas').textContent = `${analysis.totalGasCost.toFixed(6)} BNB ($${analysis.totalGasCostUSD.toFixed(2)})`;
-                
-                // 设置收益分析
-                const profitLossElem = document.getElementById('profitLoss');
-                profitLossElem.textContent = `${analysis.profitLoss.toFixed(6)} BNB ($${(analysis.profitLoss * bnbPrice).toFixed(2)})`;
-                profitLossElem.classList.remove('text-success', 'text-danger');
-                profitLossElem.classList.add(analysis.profitLoss >= 0 ? 'text-success' : 'text-danger');
-                
-                const netProfitLossElem = document.getElementById('netProfitLoss');
-                netProfitLossElem.textContent = `${analysis.netProfitLoss.toFixed(6)} BNB ($${(analysis.netProfitLoss * bnbPrice).toFixed(2)})`;
-                netProfitLossElem.classList.remove('text-success', 'text-danger');
-                netProfitLossElem.classList.add(analysis.netProfitLoss >= 0 ? 'text-success' : 'text-danger');
-                
-                document.getElementById('currentBalance').textContent = `${analysis.bnbBalance.toFixed(6)} BNB ($${(analysis.bnbBalance * bnbPrice).toFixed(2)})`;
+            async function renderResults(data) {
+                const { addressEntries, analysis: overallAnalysis } = data;
+                const bnbPrice = overallAnalysis.bnbPrice;
                 
                 // 设置时间范围信息
-                const startTime = new Date(analysis.timeRange.start);
-                const endTime = new Date(analysis.timeRange.end);
-                document.getElementById('timeRangeInfo').textContent = `统计时间: ${formatDateTime(startTime)} 至 ${formatDateTime(endTime)}`;
-                
-                // 渲染交易明细
-                const tradesContainer = document.getElementById('tradesContainer');
-                tradesContainer.innerHTML = '';
-                
-                if (analysis.trades.length === 0) {
-                    noTradesMessage.classList.remove('hidden');
-                } else {
-                    noTradesMessage.classList.add('hidden');
+                const startTime = new Date(overallAnalysis.timeRange.startDate);
+                const endTime = new Date(overallAnalysis.timeRange.endDate);
+                document.getElementById('timeRangeInfo').textContent = 
+                    `统计时间: ${formatDateTime(startTime)} 至 ${formatDateTime(endTime)}`;
+
+                // 清空并准备账户容器
+                const accountsContainer = document.getElementById('accountsContainer');
+                accountsContainer.innerHTML = '';
+
+                // 为每个账户创建分析卡片
+                for (const [index, entry] of addressEntries.entries()) {
+                    // 获取当前BNB余额
+                    const balance = await getBNBBalance(entry.address);
                     
-                    // 按时间倒序排序交易
-                    const sortedTrades = [...analysis.trades].sort((a, b) => {
-                        return new Date(b.timestamp) - new Date(a.timestamp);
-                    });
+                    const accountCard = document.createElement('div');
+                    accountCard.className = 'card mb-4';
+                    accountCard.innerHTML = `
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="bi bi-person-circle"></i> 
+                                ${entry.name}
+                                <small class="text-muted">${entry.address}</small>
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="stats-box bg-light">
+                                        <h6 class="border-bottom pb-2">交易统计</h6>
+                                        <div class="d-flex justify-content-between">
+                                            <span>总交易次数:</span>
+                                            <span class="fw-bold" id="totalTx_${index}"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>成功交易:</span>
+                                            <span class="fw-bold" id="successTx_${index}"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>失败交易:</span>
+                                            <span class="fw-bold" id="failedTx_${index}"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="stats-box bg-light">
+                                        <h6 class="border-bottom pb-2">交易金额</h6>
+                                        <div class="d-flex justify-content-between">
+                                            <span>买入总额:</span>
+                                            <span class="fw-bold text-success" id="totalBuy_${index}"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>卖出总额:</span>
+                                            <span class="fw-bold text-danger" id="totalSell_${index}"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>Gas消耗:</span>
+                                            <span class="fw-bold" id="totalGas_${index}"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="stats-box bg-light">
+                                        <h6 class="border-bottom pb-2">收益分析</h6>
+                                        <div class="d-flex justify-content-between">
+                                            <span>交易盈亏:</span>
+                                            <span class="fw-bold" id="profitLoss_${index}"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>净盈亏:</span>
+                                            <span class="fw-bold" id="netProfitLoss_${index}"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>当前余额:</span>
+                                            <span class="fw-bold" id="currentBalance_${index}"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <div class="d-flex justify-content-between align-items-center border-bottom pb-2">
+                                    <h6 class="mb-0">交易明细</h6>
+                                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tradesCollapse_${index}">
+                                        <i class="bi bi-chevron-down"></i> 展开/收起
+                                    </button>
+                                </div>
+                                <div class="collapse" id="tradesCollapse_${index}">
+                                    <div class="pt-3" id="tradesContainer_${index}"></div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    accountsContainer.appendChild(accountCard);
+
+                    // 分析该账户的交易
+                    const accountTransactions = overallAnalysis.trades.filter(trade => 
+                        trade.accountName === entry.name
+                    );
+
+                    // 计算该账户的统计数据
+                    const accountStats = calculateAccountStats(accountTransactions, bnbPrice);
+
+                    // 更新账户统计数据显示
+                    updateAccountStats(index, accountStats, bnbPrice, balance);
+
+                    // 渲染该账户的交易明细
+                    renderAccountTrades(index, accountTransactions, bnbPrice);
+                }
+            }
+
+            function calculateAccountStats(trades, bnbPrice) {
+                const stats = {
+                    totalTx: trades.length,
+                    failedTx: 0,
+                    totalBuyValue: 0,
+                    totalSellValue: 0,
+                    totalGasCost: 0,
+                    totalGasCostUSD: 0,
+                    profitLoss: 0,
+                    netProfitLoss: 0
+                };
+
+                trades.forEach(trade => {
+                    if (trade.type === 'buy') {
+                        stats.totalBuyValue += trade.value;
+                        stats.profitLoss -= trade.value;
+                    } else {
+                        stats.totalSellValue += trade.value;
+                        stats.profitLoss += trade.value;
+                    }
+                    stats.totalGasCost += trade.gasCost;
+                    stats.totalGasCostUSD += trade.gasCostUSD;
+                });
+
+                stats.netProfitLoss = stats.profitLoss - stats.totalGasCost;
+                return stats;
+            }
+
+            function updateAccountStats(index, stats, bnbPrice, balance) {
+                // 更新交易统计
+                document.getElementById(`totalTx_${index}`).textContent = `${stats.totalTx} (失败: ${stats.failedTx})`;
+                document.getElementById(`successTx_${index}`).textContent = stats.totalTx;
+                document.getElementById(`failedTx_${index}`).textContent = stats.failedTx;
+
+                // 更新交易金额
+                document.getElementById(`totalBuy_${index}`).innerHTML = 
+                    `${stats.totalBuyValue.toFixed(6)} BNB (<span class="text-muted">$${(stats.totalBuyValue * bnbPrice).toFixed(2)})</span>`;
+                document.getElementById(`totalSell_${index}`).innerHTML = 
+                    `${stats.totalSellValue.toFixed(6)} BNB (<span class="text-muted">$${(stats.totalSellValue * bnbPrice).toFixed(2)})</span>`;
+                document.getElementById(`totalGas_${index}`).innerHTML = 
+                    `${stats.totalGasCost.toFixed(6)} BNB (<span class="text-muted">$${stats.totalGasCostUSD.toFixed(2)})</span>`;
+
+                // 更新收益分析
+                const profitLossElem = document.getElementById(`profitLoss_${index}`);
+                profitLossElem.innerHTML = 
+                    `${stats.profitLoss.toFixed(6)} BNB (<span class="text-muted">$${(stats.profitLoss * bnbPrice).toFixed(2)})</span>`;
+                profitLossElem.classList.add(stats.profitLoss >= 0 ? 'text-success' : 'text-danger');
+
+                const netProfitLossElem = document.getElementById(`netProfitLoss_${index}`);
+                netProfitLossElem.innerHTML = 
+                    `${stats.netProfitLoss.toFixed(6)} BNB (<span class="text-muted">$${(stats.netProfitLoss * bnbPrice).toFixed(2)})</span>`;
+                netProfitLossElem.classList.add(stats.netProfitLoss >= 0 ? 'text-success' : 'text-danger');
+
+                // 更新当前余额
+                document.getElementById(`currentBalance_${index}`).innerHTML = 
+                    `${parseFloat(balance).toFixed(6)} BNB (<span class="text-muted">$${(parseFloat(balance) * bnbPrice).toFixed(2)})</span>`;
+            }
+
+            function renderAccountTrades(index, trades, bnbPrice) {
+                const tradesContainer = document.getElementById(`tradesContainer_${index}`);
+                
+                if (trades.length === 0) {
+                    tradesContainer.innerHTML = '<div class="alert alert-info">该账户在指定时间范围内没有交易</div>';
+                    return;
+                }
+
+                // 按时间倒序排序交易
+                const sortedTrades = [...trades].sort((a, b) => {
+                    return new Date(b.timestamp) - new Date(a.timestamp);
+                });
+
+                sortedTrades.forEach(trade => {
+                    const tradeCard = document.createElement('div');
+                    tradeCard.className = 'card trade-card';
                     
-                    sortedTrades.forEach(trade => {
-                        const tradeCard = document.createElement('div');
-                        tradeCard.className = `card trade-card ${trade.type === 'buy' ? 'buy-card' : 'sell-card'}`;
-                        
-                        const tradeTime = new Date(trade.timestamp);
-                        const valueInUsd = trade.value * bnbPrice;
-                        
-                        tradeCard.innerHTML = `
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h5 class="card-title mb-0">
+                    tradeCard.innerHTML = `
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title mb-0">
                                         <i class="bi ${trade.type === 'buy' ? 'bi-arrow-down-circle-fill text-success' : 'bi-arrow-up-circle-fill text-danger'}"></i>
                                         ${trade.type === 'buy' ? '买入' : '卖出'} - ${trade.dex}
-                                    </h5>
-                                    <span class="text-muted">${formatDateTime(tradeTime)}</span>
-                                </div>
-                                <div class="row mb-2">
-                                    <div class="col-md-6">
-                                        <div class="d-flex justify-content-between">
+                                    </h6>
+                                    <div class="mt-2">
+                                        <div class="d-flex align-items-center">
                                             <span>交易金额:</span>
-                                            <span class="fw-bold ${trade.type === 'buy' ? 'text-success' : 'text-danger'}">
-                                                ${trade.value.toFixed(6)} BNB ($${valueInUsd.toFixed(2)})
+                                            <span class="ms-2 fw-bold ${trade.type === 'buy' ? 'text-success' : 'text-danger'}">
+                                                ${trade.value.toFixed(6)} BNB
+                                                <span class="text-muted">($${(trade.value * bnbPrice).toFixed(2)})</span>
+                                            </span>
+                                        </div>
+                                        <div class="d-flex align-items-center mt-1">
+                                            <span>Gas 费用:</span>
+                                            <span class="ms-2">
+                                                ${trade.gasCost.toFixed(6)} BNB
+                                                <span class="text-muted">($${trade.gasCostUSD.toFixed(2)})</span>
                                             </span>
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="d-flex justify-content-between">
-                                            <span>Gas 费用:</span>
-                                            <span>${trade.gasCost.toFixed(6)} BNB ($${trade.gasCostUSD.toFixed(2)})</span>
-                                        </div>
-                                    </div>
                                 </div>
-                                <a href="https://bscscan.com/tx/${trade.hash}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-box-arrow-up-right"></i> 查看交易
-                                </a>
+                                <div class="text-end">
+                                    <div class="text-muted mb-2">${trade.timestamp}</div>
+                                    <a href="https://bscscan.com/tx/${trade.hash}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-box-arrow-up-right"></i> 查看交易
+                                    </a>
+                                </div>
                             </div>
-                        `;
-                        
-                        tradesContainer.appendChild(tradeCard);
-                    });
-                }
+                        </div>
+                    `;
+                    
+                    tradesContainer.appendChild(tradeCard);
+                });
             }
             
             function formatDateTime(date) {
-                return new Intl.DateTimeFormat('zh-CN', {
+                return date.toLocaleString('zh-CN', { 
+                    timeZone: 'Asia/Shanghai',
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
@@ -624,7 +766,7 @@
                     minute: '2-digit',
                     second: '2-digit',
                     hour12: false
-                }).format(date);
+                }).replace(/\//g, '-');
             }
         });
     </script>
