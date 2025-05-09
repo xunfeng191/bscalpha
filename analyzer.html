@@ -43,6 +43,19 @@
         .hidden {
             display: none;
         }
+        .wallet-input {
+            margin-bottom: 10px;
+        }
+        .wallet-input .input-group-append {
+            cursor: pointer;
+        }
+        #addWalletBtn {
+            margin-bottom: 10px;
+        }
+        .remove-wallet {
+            cursor: pointer;
+            color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -52,19 +65,35 @@
         <div class="card mb-4">
             <div class="card-body">
                 <form id="analyzeForm">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label for="address" class="form-label">BSC 钱包地址</label>
-                            <input type="text" class="form-control" id="address" placeholder="输入0x开头的BSC钱包地址" required>
+                    <div id="walletsContainer">
+                        <div class="wallet-input">
+                            <div class="input-group">
+                                <input type="text" class="form-control" placeholder="输入0x开头的BSC钱包地址" required>
+                                <div class="input-group-append">
+                                    <span class="input-group-text remove-wallet">
+                                        <i class="bi bi-x-circle"></i>
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-3">
-                            <label for="date" class="form-label">日期 (可选)</label>
-                            <input type="date" class="form-control" id="date">
+                    </div>
+                    <button type="button" id="addWalletBtn" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-plus-circle"></i> 添加钱包地址
+                    </button>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">日期范围</label>
+                            <div class="input-group">
+                                <input type="date" class="form-control" id="startDate">
+                                <span class="input-group-text">至</span>
+                                <input type="date" class="form-control" id="endDate">
+                            </div>
                             <small class="text-muted">不填默认查询今天</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label for="apiKey" class="form-label">BSCScan API Key</label>
-                            <input type="text" class="form-control" id="apiKey" placeholder="输入你的API Key">
+                            <input type="text" class="form-control" id="apiKey" value="4SJP83HZQVQ9GZZYMXJB9NMIDFQ86BCAFJ">
                             <small class="text-muted"><a href="https://bscscan.com/myapikey" target="_blank">获取API Key</a></small>
                         </div>
                         <div class="col-md-2 d-flex align-items-end">
@@ -185,13 +214,56 @@
             // 设置已保存的API Key
             apiKeyInput.value = getApiKey();
             
+            // 添加钱包地址输入框
+            const addWalletBtn = document.getElementById('addWalletBtn');
+            const walletsContainer = document.getElementById('walletsContainer');
+            
+            addWalletBtn.addEventListener('click', function() {
+                const walletInput = document.createElement('div');
+                walletInput.className = 'wallet-input';
+                walletInput.innerHTML = `
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="输入0x开头的BSC钱包地址" required>
+                        <div class="input-group-append">
+                            <span class="input-group-text remove-wallet">
+                                <i class="bi bi-x-circle"></i>
+                            </span>
+                        </div>
+                    </div>
+                `;
+                walletsContainer.appendChild(walletInput);
+            });
+            
+            // 删除钱包地址输入框
+            walletsContainer.addEventListener('click', function(e) {
+                if (e.target.closest('.remove-wallet')) {
+                    const walletInput = e.target.closest('.wallet-input');
+                    if (walletsContainer.children.length > 1) {
+                        walletInput.remove();
+                    }
+                }
+            });
+            
+            // 修改表单提交处理
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
-                // 获取表单数据
-                const address = document.getElementById('address').value.trim();
-                const date = document.getElementById('date').value;
-                const apiKey = apiKeyInput.value.trim();
+                // 获取所有钱包地址
+                const walletInputs = walletsContainer.querySelectorAll('input');
+                const addresses = Array.from(walletInputs).map(input => input.value.trim());
+                
+                // 验证地址
+                for (const address of addresses) {
+                    if (!isValidAddress(address)) {
+                        errorMessage.textContent = `无效的钱包地址格式: ${address}`;
+                        errorMessage.classList.remove('hidden');
+                        return;
+                    }
+                }
+                
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+                const apiKey = document.getElementById('apiKey').value.trim();
                 
                 // 保存API Key
                 saveApiKey(apiKey);
@@ -203,22 +275,21 @@
                 resultContainer.classList.add('hidden');
                 
                 try {
-                    // 验证地址格式
-                    if (!isValidAddress(address)) {
-                        throw new Error('无效的钱包地址格式');
-                    }
-                    
                     if (!apiKey) {
                         throw new Error('请输入BSCScan API Key');
                     }
                     
                     // 获取时间范围
-                    const timeRange = getTimeRangeTimestamps(date);
+                    const timeRange = getTimeRangeTimestamps(startDate, endDate);
                     
-                    // 获取交易列表
-                    const transactions = await getAddressTransactions(address, timeRange, apiKey);
+                    // 获取所有地址的交易
+                    let allTransactions = [];
+                    for (const address of addresses) {
+                        const transactions = await getAddressTransactions(address, timeRange, apiKey);
+                        allTransactions = allTransactions.concat(transactions);
+                    }
                     
-                    if (transactions.length === 0) {
+                    if (allTransactions.length === 0) {
                         resultContainer.classList.remove('hidden');
                         noTradesMessage.classList.remove('hidden');
                         document.getElementById('timeRangeInfo').textContent = `统计时间: ${formatDateTime(new Date(timeRange.startTimestamp * 1000))} 至 ${formatDateTime(new Date(timeRange.endTimestamp * 1000))}`;
@@ -228,16 +299,20 @@
                     // 获取当前BNB价格
                     const bnbPrice = await getBNBPrice();
                     
-                    // 获取BNB余额
-                    const bnbBalance = await getBNBBalance(address);
+                    // 获取所有地址的BNB余额总和
+                    let totalBalance = 0;
+                    for (const address of addresses) {
+                        const balance = await getBNBBalance(address);
+                        totalBalance += parseFloat(balance);
+                    }
                     
                     // 分析交易
-                    const analysis = await analyzeTransactions(address, transactions, timeRange, bnbPrice, bnbBalance);
+                    const analysis = await analyzeTransactions(addresses[0], allTransactions, timeRange, bnbPrice, totalBalance);
                     
                     // 渲染结果
                     renderResults({
                         success: true,
-                        address,
+                        addresses,
                         analysis
                     });
                     
@@ -311,24 +386,31 @@
                 }
             }
             
-            // 获取指定时间范围的时间戳
-            function getTimeRangeTimestamps(dateStr = '') {
-                // 获取当前的日期对象
+            // 修改时间范围获取函数
+            function getTimeRangeTimestamps(startDateStr = '', endDateStr = '') {
                 const now = new Date();
                 let startDate, endDate;
                 
-                if (dateStr) {
-                    // 如果提供了日期字符串，使用该日期的8:00到次日8:00
-                    startDate = new Date(dateStr);
+                if (startDateStr && endDateStr) {
+                    // 如果提供了日期范围，使用每天的8:00
+                    startDate = new Date(startDateStr);
                     startDate.setHours(8, 0, 0, 0);
                     
-                    endDate = new Date(startDate);
+                    // 结束日期使用次日8:00
+                    endDate = new Date(endDateStr);
                     endDate.setDate(endDate.getDate() + 1);
+                    endDate.setHours(8, 0, 0, 0);
                 } else {
                     // 如果没有提供日期，统计从今天8点到明天8点
                     startDate = new Date(now);
                     startDate.setHours(8, 0, 0, 0);
                     
+                    // 如果当前时间早于8点，需要统计前一天8点到今天8点
+                    if (now.getHours() < 8) {
+                        startDate.setDate(startDate.getDate() - 1);
+                    }
+                    
+                    // 结束时间为第二天早上8点
                     endDate = new Date(startDate);
                     endDate.setDate(endDate.getDate() + 1);
                 }
