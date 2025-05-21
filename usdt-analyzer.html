@@ -167,8 +167,20 @@
             };
         }
 
-        const BSCSCAN_API_KEY = 'IQ3RMA9IIBCAE4ITKUXCBATEQ3D9R2TKRP'; // 替换为你的key
         const USDT_CONTRACT = '0x55d398326f99059fF775485246999027B3197955';
+
+        const BSCSCAN_API_KEYS = [
+            'GFCARE1KCXRXZUTWYCRV9K65Q1V8BXZU3K',
+            'AMQYJJTKB7H8GGSDY3K42G989M6S7INCFG',
+            'R613WACX85IZPMASA6K8EAXTT85JQQG6J8',
+            'W8U2D8MVYQCVN2TR1FU5IJB186436997CF',
+            'T8RZ9IAIMPPDE665TSIP14Y3RYAWK23W3I'
+        ];
+
+        function getRandomApiKey() {
+            const randomIndex = Math.floor(Math.random() * BSCSCAN_API_KEYS.length);
+            return BSCSCAN_API_KEYS[randomIndex];
+        }
 
         const DEX_ROUTER_LIST = [
             '0x10ed43c718714eb63d5aa57b78b54704e256024e', // PancakeSwap v2
@@ -178,7 +190,9 @@
             '0xC0788A3aD43d79aa53B09c2EaCc313A787d1d607', // ApeSwap
             '0x7a6e4e3cc2ac9924605dc68f5d95e75e5f629b31', // Mdex Router
             '0x1b96b92314c44b159149f7e0303511fb2fc4774f', // PancakeSwap v2 (老路由)
-            // ...你实际用到的所有路由
+            '0x1111111254eeb25477b68fb85ed929f73a960582', // 1inch v4 Router
+            '0x11111112542d85b3ef69ae05771c2dccff4faa26', // 1inch v3 Router
+            '0x111111125434b319222cdbf8c261674adb56f3ae', // 1inch v2 Router
         ];
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -254,6 +268,7 @@
                             console.log(`开始获取地址 ${entry.name} (${entry.address}) 的USDT转账...`);
                             const transfers = await getUSDTTransfers(entry.address, timeRange);
                             console.log(`地址 ${entry.name} 获取到 ${transfers.length} 条USDT转账`);
+                            console.log(`【${entry.name}】USDT转账原始数据:`, transfers);
                             allTransactions = allTransactions.concat(transfers.map(tx => ({...tx, accountName: entry.name})));
                         } catch (error) {
                             errors.push(`${entry.name}: ${error.message}`);
@@ -300,7 +315,8 @@
                     const allAnalysis = [];
                     for (const entry of addressEntries) {
                         const txs = allTransactions.filter(tx => tx.accountName === entry.name);
-                        const analysis = await analyzeTransactions(entry, txs, timeRange, usdtPrice, await getUSDTBalance(entry.address));
+                        const bnbPrice = await getBNBPrice();
+                        const analysis = await analyzeTransactions(entry, txs, timeRange, usdtPrice, bnbPrice, await getUSDTBalance(entry.address));
                         allAnalysis.push(analysis);
                     }
                     
@@ -344,7 +360,7 @@
             
             // 获取USDT余额
             async function getUSDTBalance(address) {
-                const url = `https://api.bscscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 return parseFloat(data.result) / 1e18;
@@ -352,7 +368,7 @@
             
             // 获取地址交易
             async function getTxList(address, timeRange) {
-                const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 if (!Array.isArray(data.result)) {
@@ -364,41 +380,127 @@
             
             // 获取地址USDT相关的所有转账（包括合约内部swap）
             async function getUSDTTransfers(address, timeRange) {
-                const url = `https://api.bscscan.com/api?module=account&action=tokentx&contractaddress=${USDT_CONTRACT}&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${BSCSCAN_API_KEY}`;
-                const res = await fetch(url);
-                const data = await res.json();
-                if (!Array.isArray(data.result)) {
-                    console.error('BscScan返回异常:', data);
-                    return [];
+                // 同时获取代币转账和普通交易，确保捕获所有可能的USDT交易
+                const [tokenTxs, normalTxs] = await Promise.all([
+                    // 获取USDT代币转账
+                    (async () => {
+                        const url = `https://api.bscscan.com/api?module=account&action=tokentx&contractaddress=${USDT_CONTRACT}&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${getRandomApiKey()}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        return Array.isArray(data.result) ? data.result : [];
+                    })(),
+                    // 获取所有普通交易，用于捕获swap等复杂交易
+                    (async () => {
+                        const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${getRandomApiKey()}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        return Array.isArray(data.result) ? data.result : [];
+                    })()
+                ]);
+                
+                console.log(`地址 ${address} USDT代币转账: ${tokenTxs.length}条`);
+                console.log(`地址 ${address} 普通交易: ${normalTxs.length}条`);
+                
+                // 合并交易数据，确保不重复
+                const hashSet = new Set();
+                const mergedTxs = [];
+                
+                // 添加USDT代币转账
+                for (const tx of tokenTxs) {
+                    hashSet.add(tx.hash);
+                    mergedTxs.push(tx);
                 }
-                return data.result;
+                
+                // 添加可能的swap交易(从普通交易中筛选)
+                for (const tx of normalTxs) {
+                    // 如果已经有这个hash了，跳过
+                    if (hashSet.has(tx.hash)) continue;
+                    
+                    // 检查是否是swap交易
+                    if (tx.input && tx.input.length >= 10) {
+                        const methodId = tx.input.slice(0, 10).toLowerCase();
+                        const swapMethods = [
+                            '0xa03de6a9', // 1inch callOneInch
+                            '0x7c025200', // 1inch swap
+                            '0x84bd6d29', // 1inch clipperSwap
+                            '0x12aa3caf', // 1inch swap variant
+                            '0xe449022e', // 1inch uniswapV3Swap
+                            '0x90411a32', // 1inch swap variant
+                            '0xdad12b6c', // 1inch proxySwap
+                            '0xe5e8894b', // 1inch proxySwapV2
+                            '0x7ff36ab5', // PancakeSwap swapExactETHForTokens
+                            '0x38ed1739', // PancakeSwap swapExactTokensForTokens
+                            '0x18cbafe5', // PancakeSwap swapExactTokensForETH
+                            '0x8803dbee', // PancakeSwap swapTokensForExactTokens
+                        ];
+                        
+                        const isDexRouter = DEX_ROUTER_LIST.includes(tx.to.toLowerCase());
+                        
+                        if (swapMethods.includes(methodId) || isDexRouter) {
+                            // 这可能是一个swap交易，获取交易收据检查是否涉及USDT
+                            const receipt = await getTxReceipt(tx.hash);
+                            if (receipt && receipt.logs) {
+                                const ERC20_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+                                const hasUsdtTransfer = receipt.logs.some(log => 
+                                    log.address.toLowerCase() === USDT_CONTRACT.toLowerCase() && 
+                                    log.topics[0] === ERC20_TRANSFER_TOPIC
+                                );
+                                
+                                if (hasUsdtTransfer) {
+                                    console.log(`发现swap交易涉及USDT: ${tx.hash} (方法ID: ${methodId})`);
+                                    // 为了保持格式一致，添加contractAddress字段
+                                    tx.contractAddress = USDT_CONTRACT;
+                                    mergedTxs.push(tx);
+                                    hashSet.add(tx.hash);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`合并后总共: ${mergedTxs.length}条交易`);
+                return mergedTxs;
             }
             
             // 获取交易收据
             async function getTxReceipt(txHash) {
-                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 return data.result;
             }
             
-            // 获取非transfer方法的交易hash
-            async function getNonTransferTxHashes(address, timeRange) {
-                const txs = await getTxList(address, timeRange);
-                return txs
-                    .filter(tx => 
-                        tx.from.toLowerCase() === address.toLowerCase() &&
-                        (!tx.input || !tx.input.startsWith('0xa9059cbb')) // 不是transfer
-                    )
-                    .map(tx => tx.hash);
+            // 获取主交易详情（含gasPrice）
+            async function getTxDetail(txHash) {
+                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${getRandomApiKey()}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                return data.result;
             }
             
             // 解析交易数据
-            async function analyzeTransactions(addressInfo, transfers, timeRange, usdtPrice, usdtBalance) {
-                const swapHashes = await getNonTransferTxHashes(addressInfo.address, timeRange);
-                const filteredTransfers = transfers.filter(tx => swapHashes.includes(tx.hash));
-                const grouped = groupByHash(filteredTransfers);
-                const { trades, totalBuy, totalSell } = analyzeUSDTTrades(addressInfo.address, grouped, timeRange);
+            async function analyzeTransactions(addressInfo, transfers, timeRange, usdtPrice, bnbPrice, usdtBalance) {
+                const grouped = groupByHash(transfers);
+                console.log(`【${addressInfo.name}】USDT转账分组（按hash）:`, grouped.map(g => g[0].hash));
+                const trades = [];
+                let totalBuy = 0, totalSell = 0, totalGasCost = 0;
+                for (const txGroup of grouped) {
+                    const tx = txGroup[0];
+                    const time = parseInt(tx.timeStamp);
+                    if (time < timeRange.start || time >= timeRange.end) continue;
+                    const trade = await analyzeTxGroup(txGroup, addressInfo.address);
+                    console.log(`【${addressInfo.name}】hash:${tx.hash} trade结果:`, trade);
+                    if (trade) {
+                        trades.push(trade);
+                        if (trade.isBuy) totalBuy += Math.abs(trade.usdtAmount);
+                        if (trade.isSell) totalSell += Math.abs(trade.usdtAmount);
+                        totalGasCost += trade.gasCost || 0;
+                    }
+                }
+
+                const gasCostInUSDT = totalGasCost * bnbPrice;
+                const netProfitLoss = totalSell - totalBuy - gasCostInUSDT;
+
                 const analysis = {
                     name: addressInfo.name,
                     address: addressInfo.address,
@@ -406,8 +508,11 @@
                     totalBuyValue: totalBuy,
                     totalSellValue: totalSell,
                     profitLoss: totalSell - totalBuy,
-                    netProfitLoss: totalSell - totalBuy, // 没有gas统计
-                    usdtPrice,
+                    netProfitLoss: netProfitLoss,
+                    totalGasCost: totalGasCost,
+                    gasCostInUSDT: gasCostInUSDT,
+                    bnbPrice: bnbPrice,
+                    usdtPrice: usdtPrice,
                     usdtBalance: parseFloat(usdtBalance),
                     timeRange
                 };
@@ -418,6 +523,64 @@
                 const { addressEntries, allAnalysis } = data;
                 const accountsContainer = document.getElementById('accountsContainer');
                 accountsContainer.innerHTML = '';
+
+                // 计算总亏损和是否有交易
+                let totalLoss = 0;
+                let totalTrades = 0;
+                allAnalysis.forEach(analysis => {
+                    totalLoss += analysis.netProfitLoss < 0 ? Math.abs(analysis.netProfitLoss) : 0;
+                    totalTrades += analysis.trades.length;
+                });
+
+                // 创建总结卡片
+                const summaryCard = document.createElement('div');
+                summaryCard.className = 'card mb-4';
+                
+                if (totalTrades === 0) {
+                    summaryCard.innerHTML = `
+                        <div class="card-body bg-info text-white">
+                            <h5 class="card-title">⚠️ 未检测到交易记录</h5>
+                            <p class="mb-0">可能原因：</p>
+                            <ul class="mb-0">
+                                <li>今日未进行交易</li>
+                                <li>API 访问异常，请稍后重试</li>
+                                <li>选择的时间范围内无交易</li>
+                            </ul>
+                        </div>
+                    `;
+                } else if (totalLoss < 5) {
+                    const pigFeetMeals = Math.ceil(totalLoss / 2);
+                    summaryCard.innerHTML = `
+                        <div class="card-body bg-warning">
+                            <h5 class="card-title">😅 今日小亏 ${totalLoss.toFixed(2)} USDT</h5>
+                            <p class="mb-0">相当于丢失了 ${pigFeetMeals} 顿猪脚饭 (按2U/顿计算)</p>
+                            <small class="text-muted">别灰心，明天会更好！</small>
+                        </div>
+                    `;
+                } else if (totalLoss >= 50) {
+                    const hotPotMeals = Math.ceil(totalLoss / 50);
+                    summaryCard.innerHTML = `
+                        <div class="card-body bg-danger text-white">
+                            <h5 class="card-title">😱 今日大亏 ${totalLoss.toFixed(2)} USDT</h5>
+                            <p class="mb-0">相当于错过了 ${hotPotMeals} 顿海底捞 (按50U/顿计算)</p>
+                            <small>建议休息一下，调整心态！</small>
+                        </div>
+                    `;
+                } else {
+                    const pigFeetMeals = Math.ceil(totalLoss / 2);
+                    summaryCard.innerHTML = `
+                        <div class="card-body bg-warning">
+                            <h5 class="card-title">😓 今日亏损 ${totalLoss.toFixed(2)} USDT</h5>
+                            <p class="mb-0">相当于丢失了 ${pigFeetMeals} 顿猪脚饭 (按2U/顿计算)</p>
+                            <small class="text-muted">调整策略，明天继续！</small>
+                        </div>
+                    `;
+                }
+
+                // 将总结卡片插入到结果容器的开头
+                accountsContainer.insertBefore(summaryCard, accountsContainer.firstChild);
+
+                // 继续渲染原有的账户分析结果
                 for (let i = 0; i < addressEntries.length; i++) {
                     const entry = addressEntries[i];
                     const analysis = allAnalysis[i];
@@ -455,6 +618,10 @@
                                             <span>当前USDT余额:</span>
                                             <span class="fw-bold">${balance.toFixed(6)} USDT</span>
                                         </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>总Gas消耗:</span>
+                                            <span class="fw-bold">${analysis.totalGasCost.toFixed(6)} BNB ≈ ${analysis.gasCostInUSDT.toFixed(2)} USDT</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="col-md-8">
@@ -470,6 +637,7 @@
                                                         <th>代币金额</th>
                                                         <th>代币合约</th>
                                                         <th>交易</th>
+                                                        <th>Gas费用（BNB）</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -486,6 +654,7 @@
                                                                 <td>${d.tokenAmount.toFixed(6)}</td>
                                                                 <td class="ellipsis" title="${d.tokenAddress}">${d.tokenAddress}</td>
                                                                 <td><a href="https://bscscan.com/tx/${d.hash}" target="_blank">查看</a></td>
+                                                                <td>${d.gasCost ? d.gasCost.toFixed(6) : '-'}</td>
                                                             </tr>
                                                         `).join('')
                                                     }
@@ -621,6 +790,237 @@
                     }
                 }
                 return { trades, totalBuy, totalSell };
+            }
+
+            // 解析一组同hash的USDT转账，判断是否为USDT买入/卖出
+            async function analyzeTxGroup(txGroup, address) {
+                const tx = txGroup[0];
+                const receipt = await getTxReceipt(tx.hash);
+                if (!receipt || !receipt.logs) {
+                    console.log(`【${address}】hash:${tx.hash} 没有收据或logs`);
+                    return null;
+                }
+
+                // 获取主交易详情
+                const txDetail = await getTxDetail(tx.hash);
+                if (!txDetail) {
+                    console.log(`【${address}】hash:${tx.hash} 没有主交易详情`);
+                    return null;
+                }
+                
+                const methodId = txDetail.input ? txDetail.input.slice(0, 10).toLowerCase() : '';
+                console.log(`交易 ${tx.hash} 方法ID: ${methodId}`);
+                
+                // 判断是否为swap类交易
+                const isSwap = (() => {
+                    if (!txDetail.input) return false;
+                    const input = txDetail.input.slice(0, 10).toLowerCase();
+                    // 1inch、PancakeSwap等swap方法
+                    const swapMethods = [
+                        '0xa03de6a9', // 1inch callOneInch
+                        '0x7c025200', // 1inch swap
+                        '0x84bd6d29', // 1inch clipperSwap
+                        '0x12aa3caf', // 1inch swap variant
+                        '0xe449022e', // 1inch uniswapV3Swap
+                        '0x90411a32', // 1inch swap variant
+                        '0xdad12b6c', // 1inch proxySwap
+                        '0xe5e8894b', // 1inch proxySwapV2
+                        '0x7ff36ab5', // PancakeSwap swapExactETHForTokens
+                        '0x38ed1739', // PancakeSwap swapExactTokensForTokens
+                        '0x18cbafe5', // PancakeSwap swapExactTokensForETH
+                        '0x8803dbee', // PancakeSwap swapTokensForExactTokens
+                    ];
+                    if (swapMethods.includes(input)) return true;
+                    // 目标地址是DEX路由
+                    if (DEX_ROUTER_LIST.includes(tx.to.toLowerCase())) return true;
+                    return false;
+                })();
+
+                // 即使不是swap交易，也尝试分析USDT转账
+                // 这能确保捕获所有类型的USDT交易
+
+                // 计算gas费用
+                const gasUsed = parseInt(receipt.gasUsed, 16);
+                const gasPrice = parseInt(txDetail.gasPrice, 16);
+                const gasCost = gasUsed * gasPrice / 1e18;
+
+                const ERC20_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+                let usdtIn = 0, usdtOut = 0, tokenIn = 0, tokenOut = 0, tokenAddress = '';
+
+                // 特别处理1inch交易
+                const is1inch = ['0xdad12b6c', '0xe5e8894b', '0xa03de6a9'].includes(methodId);
+                if (is1inch) {
+                    console.log(`处理1inch交易: ${tx.hash} (方法: ${methodId}), 来自: ${tx.from.toLowerCase()}, 目标: ${tx.to.toLowerCase()}`);
+                    
+                    // 仔细检查1inch交易的日志
+                    for (const log of receipt.logs) {
+                        if (log.topics[0] === ERC20_TRANSFER_TOPIC) {
+                            const contract = log.address.toLowerCase();
+                            const from = '0x' + log.topics[1].slice(26).toLowerCase();
+                            const to = '0x' + log.topics[2].slice(26).toLowerCase();
+                            let amount = 0;
+                            try {
+                                if (log.data && log.data !== "0x") {
+                                    amount = parseFloat(BigInt(log.data).toString()) / 1e18;
+                                }
+                            } catch (e) {
+                                amount = 0;
+                            }
+                            
+                            console.log(`1inch日志: 合约=${contract}, 从=${from}, 到=${to}, 金额=${amount}, 用户地址=${address.toLowerCase()}`);
+                            
+                            // USDT转出 - 可能是买入的第一步
+                            if (contract === USDT_CONTRACT.toLowerCase() && from === address.toLowerCase()) {
+                                usdtOut += amount;
+                                console.log(`检测到USDT流出: ${amount}`);
+                            }
+                            
+                            // USDT转入 - 可能是卖出的结果
+                            if (contract === USDT_CONTRACT.toLowerCase() && to === address.toLowerCase()) {
+                                usdtIn += amount;
+                                console.log(`检测到USDT流入: ${amount}`);
+                            }
+                            
+                            // 非USDT代币转入 - 可能是买入的结果
+                            if (contract !== USDT_CONTRACT.toLowerCase() && to === address.toLowerCase()) {
+                                if (!tokenAddress) tokenAddress = contract;
+                                tokenIn += amount;
+                                console.log(`检测到非USDT代币流入: ${amount}, 合约: ${contract}`);
+                            }
+                            
+                            // 非USDT代币转出 - 可能是卖出的开始
+                            if (contract !== USDT_CONTRACT.toLowerCase() && from === address.toLowerCase()) {
+                                if (!tokenAddress) tokenAddress = contract;
+                                tokenOut += amount;
+                                console.log(`检测到非USDT代币流出: ${amount}, 合约: ${contract}`);
+                            }
+                        }
+                    }
+                    
+                    // 1inch特殊情况1: proxySwap可能不直接转入代币，而是通过内部调用转入
+                    if (methodId === '0xdad12b6c' && usdtOut > 0 && tokenIn === 0) {
+                        console.log(`proxySwap交易 ${tx.hash} 检测到USDT流出但没有代币流入，尝试查找内部代币转账`);
+                        
+                        // 检查是否有其他非USDT代币转入
+                        let foundTokenIn = false;
+                        for (const log of receipt.logs) {
+                            if (log.topics[0] === ERC20_TRANSFER_TOPIC) {
+                                const contract = log.address.toLowerCase();
+                                const to = '0x' + log.topics[2].slice(26).toLowerCase();
+                                
+                                // 如果有任何非USDT代币转入用户地址，视为买入交易的目标代币
+                                if (contract !== USDT_CONTRACT.toLowerCase() && to === address.toLowerCase()) {
+                                    try {
+                                        const amount = parseFloat(BigInt(log.data).toString()) / 1e18;
+                                        if (amount > 0) {
+                                            console.log(`✅ proxySwap买入: 找到目标代币 ${amount} (合约: ${contract})`);
+                                            tokenIn = amount;
+                                            tokenAddress = contract;
+                                            foundTokenIn = true;
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        console.error("解析代币数量错误:", e);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 如果仍未找到，强制识别为买入交易
+                        if (!foundTokenIn && usdtOut > 0) {
+                            console.log(`⚠️ proxySwap强制识别为买入: 支付 ${usdtOut} USDT`);
+                            // 先尝试从input数据中找出目标代币地址
+                            try {
+                                if (methodId === '0xdad12b6c') { // proxySwap
+                                    const toTokenPosition = 202; // proxySwap的第4个参数位置(toToken)
+                                    if (txDetail.input.length >= toTokenPosition + 64) {
+                                        const toTokenHex = txDetail.input.substring(toTokenPosition, toTokenPosition + 64);
+                                        if (toTokenHex && toTokenHex !== '0000000000000000000000000000000000000000000000000000000000000000') {
+                                            // 从hex中提取地址部分
+                                            const extractedAddress = '0x' + toTokenHex.substring(24);
+                                            console.log(`从input数据提取的目标代币地址: ${extractedAddress}`);
+                                            tokenAddress = extractedAddress.toLowerCase();
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error("解析input数据错误:", e);
+                            }
+                            
+                            // 无论如何都记录为买入交易
+                            return {
+                                hash: tx.hash,
+                                usdtAmount: -usdtOut,
+                                tokenAmount: tokenIn > 0 ? tokenIn : 1, // 如果没找到具体数量，默认为1
+                                tokenAddress: tokenAddress || "未知代币", // 如果没找到代币地址，标记为未知
+                                isBuy: true,
+                                isSell: false,
+                                timestamp: tx.timeStamp,
+                                gasCost: gasCost,
+                                note: "自动识别的1inch买入交易"
+                            };
+                        }
+                    }
+                    
+                    // 1inch特殊情况2: 处理其他1inch方法的买入
+                    if (is1inch && usdtOut > 0 && tokenIn === 0) {
+                        console.log(`1inch交易 ${tx.hash} (${methodId}) 检测到USDT流出但没有代币流入，强制识别为买入交易`);
+                        
+                        return {
+                            hash: tx.hash,
+                            usdtAmount: -usdtOut,
+                            tokenAmount: 1, // 默认数量
+                            tokenAddress: tokenAddress || "未知代币",
+                            isBuy: true,
+                            isSell: false,
+                            timestamp: tx.timeStamp,
+                            gasCost: gasCost,
+                            note: "自动识别的1inch买入交易"
+                        };
+                    }
+                }
+
+                // 通用检查 - 必须放在1inch特殊处理后
+                if (usdtOut > 0 && tokenIn > 0) {
+                    console.log(`✅ 检测到买入交易 ${tx.hash}: 支付${usdtOut} USDT, 获得${tokenIn}代币`);
+                    return {
+                        hash: tx.hash,
+                        usdtAmount: -usdtOut,
+                        tokenAmount: tokenIn,
+                        tokenAddress,
+                        isBuy: true,
+                        isSell: false,
+                        timestamp: tx.timeStamp,
+                        gasCost: gasCost
+                    };
+                }
+                
+                // 检测卖出交易
+                if (usdtIn > 0 && tokenOut > 0) {
+                    console.log(`✅ 检测到卖出交易 ${tx.hash}: 支付${tokenOut}代币, 获得${usdtIn} USDT`);
+                    return {
+                        hash: tx.hash,
+                        usdtAmount: usdtIn,
+                        tokenAmount: -tokenOut,
+                        tokenAddress,
+                        isBuy: false,
+                        isSell: true,
+                        timestamp: tx.timeStamp,
+                        gasCost: gasCost
+                    };
+                }
+                
+                return null;
+            }
+
+            async function getBNBPrice() {
+                try {
+                    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
+                    const data = await res.json();
+                    return parseFloat(data.price);
+                } catch (e) {
+                    return 0;
+                }
             }
         });
     </script>
