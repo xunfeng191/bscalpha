@@ -167,8 +167,20 @@
             };
         }
 
-        const BSCSCAN_API_KEY = 'GFCARE1KCXRXZUTWYCRV9K65Q1V8BXZU3K'; // 替换为你的key
         const USDT_CONTRACT = '0x55d398326f99059fF775485246999027B3197955';
+
+        const BSCSCAN_API_KEYS = [
+            'GFCARE1KCXRXZUTWYCRV9K65Q1V8BXZU3K',
+            'AMQYJJTKB7H8GGSDY3K42G989M6S7INCFG',
+            'R613WACX85IZPMASA6K8EAXTT85JQQG6J8',
+            'W8U2D8MVYQCVN2TR1FU5IJB186436997CF',
+            'T8RZ9IAIMPPDE665TSIP14Y3RYAWK23W3I'
+        ];
+
+        function getRandomApiKey() {
+            const randomIndex = Math.floor(Math.random() * BSCSCAN_API_KEYS.length);
+            return BSCSCAN_API_KEYS[randomIndex];
+        }
 
         const DEX_ROUTER_LIST = [
             '0x10ed43c718714eb63d5aa57b78b54704e256024e', // PancakeSwap v2
@@ -178,7 +190,9 @@
             '0xC0788A3aD43d79aa53B09c2EaCc313A787d1d607', // ApeSwap
             '0x7a6e4e3cc2ac9924605dc68f5d95e75e5f629b31', // Mdex Router
             '0x1b96b92314c44b159149f7e0303511fb2fc4774f', // PancakeSwap v2 (老路由)
-            // ...你实际用到的所有路由
+            '0x1111111254eeb25477b68fb85ed929f73a960582', // 1inch v4 Router
+            '0x11111112542d85b3ef69ae05771c2dccff4faa26', // 1inch v3 Router
+            '0x111111125434b319222cdbf8c261674adb56f3ae', // 1inch v2 Router
         ];
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -346,7 +360,7 @@
             
             // 获取USDT余额
             async function getUSDTBalance(address) {
-                const url = `https://api.bscscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 return parseFloat(data.result) / 1e18;
@@ -354,7 +368,7 @@
             
             // 获取地址交易
             async function getTxList(address, timeRange) {
-                const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 if (!Array.isArray(data.result)) {
@@ -366,7 +380,7 @@
             
             // 获取地址USDT相关的所有转账（包括合约内部swap）
             async function getUSDTTransfers(address, timeRange) {
-                const url = `https://api.bscscan.com/api?module=account&action=tokentx&contractaddress=${USDT_CONTRACT}&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=account&action=tokentx&contractaddress=${USDT_CONTRACT}&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 if (!Array.isArray(data.result)) {
@@ -378,7 +392,7 @@
             
             // 获取交易收据
             async function getTxReceipt(txHash) {
-                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 return data.result;
@@ -386,18 +400,10 @@
             
             // 获取主交易详情（含gasPrice）
             async function getTxDetail(txHash) {
-                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${BSCSCAN_API_KEY}`;
+                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${getRandomApiKey()}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 return data.result;
-            }
-            
-            // 获取非transfer方法的交易hash
-            async function getNonTransferTxHashes(address, timeRange) {
-                const txs = await getTxList(address, timeRange);
-                return txs
-                    .filter(tx => !tx.input || !tx.input.startsWith('0xa9059cbb'))
-                    .map(tx => tx.hash);
             }
             
             // 解析交易数据
@@ -680,6 +686,23 @@
                 const ERC20_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
                 let usdtIn = 0, usdtOut = 0, tokenIn = 0, tokenOut = 0, tokenAddress = '';
 
+                // 检查是否是 1inch 或其他 DEX 的交易
+                const is1inchTx = txDetail.input && (
+                    txDetail.input.startsWith('0xa03de6a9') || // callOneInch
+                    txDetail.input.startsWith('0x7c025200') || // swap
+                    txDetail.input.startsWith('0x84bd6d29') || // clipperSwap
+                    txDetail.input.startsWith('0x12aa3caf') || // swap (另一个变体)
+                    txDetail.input.startsWith('0xe449022e') || // uniswapV3Swap
+                    txDetail.input.startsWith('0x90411a32')    // swap (另一个变体)
+                );
+
+                const isDexTx = is1inchTx || DEX_ROUTER_LIST.includes(tx.to.toLowerCase());
+
+                // 如果不是 DEX 交易，直接返回
+                if (!isDexTx) {
+                    return null;
+                }
+
                 for (const log of receipt.logs) {
                     if (log.topics[0] === ERC20_TRANSFER_TOPIC) {
                         const contract = log.address.toLowerCase();
@@ -731,7 +754,6 @@
                         gasCost: gasCost
                     };
                 }
-                // fallback: 只统计swap买卖，不统计普通转账
                 return null;
             }
 
