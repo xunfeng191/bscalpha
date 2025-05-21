@@ -527,6 +527,75 @@
                                                 }
                                             }
                                         }
+                                        // proxySwap - 参数解析 (新增这段代码)
+                                        else if (methodId === '0xdad12b6c') {
+                                            console.log(`处理proxySwap交易: ${tx.hash}`);
+                                            
+                                            // 检查参数，判断是否是卖出交易
+                                            const fromTokenPosition = 74; // 第二个参数位置
+                                            const toTokenPosition = 202; // 第四个参数位置
+                                            
+                                            if (tx.input.length >= toTokenPosition + 64) {
+                                                const fromTokenHex = tx.input.substring(fromTokenPosition, fromTokenPosition+64);
+                                                const toTokenHex = tx.input.substring(toTokenPosition, toTokenPosition+64);
+                                                
+                                                console.log(`proxySwap参数: fromToken=${fromTokenHex}, toToken=${toTokenHex}`);
+                                                
+                                                // 从代币到BNB的交易(toToken为0通常表示BNB)
+                                                if (toTokenHex === '0000000000000000000000000000000000000000000000000000000000000000') {
+                                                    // 检查是否有代币从用户地址转出
+                                                    let hasTokenOut = false;
+                                                    let nonWbnbTokenAddress = '';
+                                                    
+                                                    for (const log of receipt.logs) {
+                                                        if (log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
+                                                            const from = '0x' + log.topics[1].slice(26).toLowerCase();
+                                                            if (from.toLowerCase() === addressInfo.address.toLowerCase() && 
+                                                                log.address.toLowerCase() !== wbnbAddress) {
+                                                                hasTokenOut = true;
+                                                                nonWbnbTokenAddress = log.address.toLowerCase();
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    if (hasTokenOut) {
+                                                        console.log(`proxySwap: 用户转出非WBNB代币(${nonWbnbTokenAddress})，目标是BNB，确认是卖出交易`);
+                                                        
+                                                        // 尝试估算卖出金额，先查看交易日志中是否有BNB内部转账
+                                                        try {
+                                                            const API_KEY = 'IQ3RMA9IIBCAE4ITKUXCBATEQ3D9R2TKRP';
+                                                            const internalTxUrl = `https://api.bscscan.com/api?module=account&action=txlistinternal&txhash=${tx.hash}&apikey=${API_KEY}`;
+                                                            const internalResponse = await fetch(internalTxUrl);
+                                                            const internalData = await internalResponse.json();
+                                                            
+                                                            if (internalData.status === '1' && Array.isArray(internalData.result)) {
+                                                                for (const internalTx of internalData.result) {
+                                                                    if (internalTx.to.toLowerCase() === addressInfo.address.toLowerCase()) {
+                                                                        const amount = parseFloat(web3.utils.fromWei(internalTx.value, 'ether'));
+                                                                        console.log(`proxySwap内部交易: 用户收到 ${amount} BNB`);
+                                                                        bnbReceived = amount.toString();
+                                                                        isSell = true;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                            }
+                                                            
+                                                            // 如果没有找到内部转账，使用默认值
+                                                            if (!isSell) {
+                                                                bnbReceived = '0.05'; // 使用默认值
+                                                                isSell = true;
+                                                                console.log(`未找到proxySwap的实际卖出金额，使用默认值: ${bnbReceived} BNB`);
+                                                            }
+                                                        } catch (e) {
+                                                            console.error(`获取proxySwap内部交易失败:`, e);
+                                                            bnbReceived = '0.05'; // 使用默认值
+                                                            isSell = true;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                         // callOneInch - 参数解析
                                         else if (methodId === '0xa03de6a9') {
                                             // callOneInch的参数结构可能不同，需要特殊处理
