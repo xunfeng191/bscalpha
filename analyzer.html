@@ -529,9 +529,14 @@
                         if (is1inch) {
                             console.log(`检测到1inch方法: ${methodId}, 交易: ${tx.hash}`);
                             
-                            // 对于proxySwapV2方法(0xe5e8894b)的特殊处理
-                            if (methodId === '0xe5e8894b' || methodId === '0xa03de6a9') { // 增加对callOneInch的处理
-                                console.log(`处理特定1inch交易(${methodId === '0xa03de6a9' ? 'callOneInch' : 'proxySwapV2'}): ${tx.hash}`);
+                            // 对于proxySwapV2、proxySwap和callOneInch方法的特殊处理
+                            if (methodId === '0xe5e8894b' || methodId === '0xa03de6a9' || methodId === '0xdad12b6c') {
+                                let methodName = '';
+                                if (methodId === '0xe5e8894b') methodName = 'proxySwapV2';
+                                else if (methodId === '0xa03de6a9') methodName = 'callOneInch';
+                                else if (methodId === '0xdad12b6c') methodName = 'proxySwap';
+                                
+                                console.log(`处理特定1inch交易(${methodName}): ${tx.hash}`);
                                 
                                 // 优先检查内部交易是否有BNB转入用户地址
                                 try {
@@ -548,7 +553,7 @@
                                         for (const internalTx of internalData.result) {
                                             if (internalTx.to.toLowerCase() === addressInfo.address.toLowerCase()) {
                                                 const amount = parseFloat(web3.utils.fromWei(internalTx.value, 'ether'));
-                                                console.log(`${methodId === '0xa03de6a9' ? 'callOneInch' : 'proxySwapV2'}内部交易发现BNB转入: ${amount} BNB, 哈希: ${tx.hash}`);
+                                                console.log(`${methodName}内部交易发现BNB转入: ${amount} BNB, 哈希: ${tx.hash}`);
                                                 bnbReceived = amount.toString();
                                                 isSell = true;
                                                 break;
@@ -556,7 +561,7 @@
                                         }
                                     }
                                 } catch (e) {
-                                    console.error(`获取${methodId === '0xa03de6a9' ? 'callOneInch' : 'proxySwapV2'}内部交易失败:`, e);
+                                    console.error(`获取${methodName}内部交易失败:`, e);
                                 }
                                 
                                 // 如果内部交易未找到BNB转入，检查日志是否有WBNB转入
@@ -570,7 +575,7 @@
                                             
                                             if (logTo.toLowerCase() === addressInfo.address.toLowerCase()) {
                                                 const amount = web3.utils.fromWei(log.data, 'ether');
-                                                console.log(`${methodId === '0xa03de6a9' ? 'callOneInch' : 'proxySwapV2'}中找到WBNB转入: ${amount} WBNB`);
+                                                console.log(`${methodName}中找到WBNB转入: ${amount} WBNB`);
                                                 if (parseFloat(amount) > parseFloat(bnbReceived)) {
                                                     bnbReceived = amount;
                                                     isSell = true;
@@ -622,7 +627,7 @@
                                             // 如果仍未找到金额，但确实是卖出交易，使用默认值
                                             if (!foundAmount && hasNonWbnbOut) {
                                                 console.log(`确认为卖出交易，但无法确定金额，使用默认值`);
-                                                bnbReceived = '0.8'; // 对于callOneInch和proxySwapV2，默认值使用0.8而不是0.05
+                                                bnbReceived = '0.8'; // 默认值使用0.8
                                                 isSell = true;
                                             }
                                         } catch (e) {
