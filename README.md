@@ -15,6 +15,10 @@
 
 访问 [https://sincitysh.github.io/bscalpha/analyzer.html](https://sincitysh.github.io/bscalpha/analyzer.html) 即可开始使用。
 
+USDT统计的，可以访问这个
+[https://sincitysh.github.io/bscalpha/usdt-analyzer.html](https://sincitysh.github.io/bscalpha/usdt-analyzer.html) 
+
+
 ## 📝 使用说明
 
 1. 输入钱包地址（支持多个地址，每行一个）
