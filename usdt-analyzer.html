@@ -28,17 +28,53 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .loader {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
             margin: 20px auto;
         }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: conic-gradient(#0000 10%, #3498db);
+            -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0);
+            mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0);
+            animation: spin 1s infinite linear;
+        }
+        .loading-text {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        .loading-progress {
+            margin-top: 10px;
+            width: 250px;
+            height: 6px;
+            background-color: #eee;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .loading-progress-bar {
+            height: 100%;
+            background-color: #3498db;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(1turn); }
+        }
+        .progress-info {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid #3498db;
+            padding: 10px 15px;
+            margin: 10px 0;
+            font-size: 14px;
+            color: #333;
+            border-radius: 4px;
         }
         .hidden {
             display: none;
@@ -87,6 +123,16 @@
                             <input type="date" class="form-control" id="date">
                             <small class="text-muted">不填默认统计今天8:00到明天8:00的数据</small>
                         </div>
+                        <div class="col-md-4">
+                            <label for="txLimit" class="form-label">交易处理限制</label>
+                            <select class="form-control" id="txLimit">
+                                <option value="50">仅处理最近50笔交易</option>
+                                <option value="100">仅处理最近100笔交易</option>
+                                <option value="200">仅处理最近200笔交易</option>
+                                <option value="all" selected>处理所有交易</option>
+                            </select>
+                            <small class="text-muted">限制处理的交易数量可以提高性能</small>
+                        </div>
                     </div>
                     <div class="row mt-3">
                         <div class="col-12">
@@ -101,7 +147,14 @@
         </div>
 
         <div id="errorMessage" class="alert alert-danger hidden" role="alert"></div>
-        <div id="loader" class="loader hidden"></div>
+        <div id="loader" class="loader hidden">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">正在分析交易数据...</div>
+            <div class="loading-progress">
+                <div class="loading-progress-bar" style="width: 0%"></div>
+            </div>
+            <div id="loading-detail" class="loading-text"></div>
+        </div>
 
         <div id="resultContainer" class="hidden">
             <div class="card mb-4">
@@ -195,6 +248,15 @@
             '0x111111125434b319222cdbf8c261674adb56f3ae', // 1inch v2 Router
         ];
 
+        // 定义路由地址
+        const routerAddresses = {
+            'PancakeSwap': '0x10ED43C718714eb63d5aA57B78B54704E256024E'.toLowerCase(),
+            'BiSwap': '0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8'.toLowerCase(),
+            'BaseSwap': '0x13f4EA83D0bd40E75C8222255bc855a974568Dd4'.toLowerCase(),
+            'BaseSwapRouter': '0xb300000b72deaeb607a12d5f54773d1c19c7028d'.toLowerCase(), // 确保这个地址正确添加
+            // ... 其他地址 ...
+        };
+
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('analyzeForm');
             const loader = document.getElementById('loader');
@@ -266,7 +328,8 @@
                     for (const entry of addressEntries) {
                         try {
                             console.log(`开始获取地址 ${entry.name} (${entry.address}) 的USDT转账...`);
-                            const transfers = await getUSDTTransfers(entry.address, timeRange);
+                            const txLimit = document.getElementById('txLimit').value;
+                            const transfers = await getUSDTTransfers(entry.address, timeRange, txLimit);
                             console.log(`地址 ${entry.name} 获取到 ${transfers.length} 条USDT转账`);
                             console.log(`【${entry.name}】USDT转账原始数据:`, transfers);
                             allTransactions = allTransactions.concat(transfers.map(tx => ({...tx, accountName: entry.name})));
@@ -342,6 +405,8 @@
                     loader.classList.remove('hidden');
                     submitSpinner.classList.remove('hidden');
                     document.querySelector('.normal-text').classList.add('hidden');
+                    document.querySelector('.loading-progress-bar').style.width = '0%';
+                    document.getElementById('loading-detail').textContent = '准备分析...';
                 } else {
                     loader.classList.add('hidden');
                     submitSpinner.classList.add('hidden');
@@ -378,8 +443,42 @@
                 return data.result;
             }
             
+            // 使用缓存减少重复请求
+            const receiptCache = {};
+            const txDetailCache = {};
+            
+            async function getTxReceipt(txHash) {
+                if (receiptCache[txHash]) return receiptCache[txHash];
+                
+                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${getRandomApiKey()}`;
+                try {
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    receiptCache[txHash] = data.result;
+                    return data.result;
+                } catch (e) {
+                    console.error(`获取交易收据失败: ${txHash}`, e);
+                    return null;
+                }
+            }
+            
+            async function getTxDetail(txHash) {
+                if (txDetailCache[txHash]) return txDetailCache[txHash];
+                
+                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${getRandomApiKey()}`;
+                try {
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    txDetailCache[txHash] = data.result;
+                    return data.result;
+                } catch (e) {
+                    console.error(`获取交易详情失败: ${txHash}`, e);
+                    return null;
+                }
+            }
+            
             // 获取地址USDT相关的所有转账（包括合约内部swap）
-            async function getUSDTTransfers(address, timeRange) {
+            async function getUSDTTransfers(address, timeRange, txLimit) {
                 // 同时获取代币转账和普通交易，确保捕获所有可能的USDT交易
                 const [tokenTxs, normalTxs] = await Promise.all([
                     // 获取USDT代币转账
@@ -389,12 +488,29 @@
                         const data = await res.json();
                         return Array.isArray(data.result) ? data.result : [];
                     })(),
-                    // 获取所有普通交易，用于捕获swap等复杂交易
+                    // 获取所有普通交易，但限制处理数量
                     (async () => {
                         const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&starttime=${timeRange.start}&endtime=${timeRange.end}&sort=asc&apikey=${getRandomApiKey()}`;
                         const res = await fetch(url);
                         const data = await res.json();
-                        return Array.isArray(data.result) ? data.result : [];
+                        let allTxs = Array.isArray(data.result) ? data.result : [];
+                        
+                        // 首先筛选时间范围
+                        allTxs = allTxs.filter(tx => {
+                            const txTime = parseInt(tx.timeStamp);
+                            return txTime >= timeRange.start && txTime <= timeRange.end;
+                        });
+                        
+                        console.log(`获取到 ${allTxs.length} 条符合时间范围的普通交易`);
+                        
+                        // 再应用交易限制
+                        if (txLimit !== 'all') {
+                            const limitNum = parseInt(txLimit);
+                            allTxs = allTxs.slice(-limitNum);
+                            console.log(`应用交易限制，仅处理最近 ${txLimit} 笔交易`);
+                        }
+                        
+                        return allTxs;
                     })()
                 ]);
                 
@@ -411,47 +527,62 @@
                     mergedTxs.push(tx);
                 }
                 
-                // 添加可能的swap交易(从普通交易中筛选)
-                for (const tx of normalTxs) {
-                    // 如果已经有这个hash了，跳过
-                    if (hashSet.has(tx.hash)) continue;
+                // 分批处理普通交易，每批处理50个
+                const batchSize = 50;
+                const totalTxs = normalTxs.length;
+                for (let i = 0; i < normalTxs.length; i += batchSize) {
+                    const batch = normalTxs.slice(i, i + batchSize);
+                    const progress = Math.min(100, Math.round((i / totalTxs) * 100));
+                    console.log(`处理第 ${i/batchSize + 1} 批交易 (${i}-${i+batch.length})`);
                     
-                    // 检查是否是swap交易
-                    if (tx.input && tx.input.length >= 10) {
-                        const methodId = tx.input.slice(0, 10).toLowerCase();
-                        const swapMethods = [
-                            '0xa03de6a9', // 1inch callOneInch
-                            '0x7c025200', // 1inch swap
-                            '0x84bd6d29', // 1inch clipperSwap
-                            '0x12aa3caf', // 1inch swap variant
-                            '0xe449022e', // 1inch uniswapV3Swap
-                            '0x90411a32', // 1inch swap variant
-                            '0xdad12b6c', // 1inch proxySwap
-                            '0xe5e8894b', // 1inch proxySwapV2
-                            '0x7ff36ab5', // PancakeSwap swapExactETHForTokens
-                            '0x38ed1739', // PancakeSwap swapExactTokensForTokens
-                            '0x18cbafe5', // PancakeSwap swapExactTokensForETH
-                            '0x8803dbee', // PancakeSwap swapTokensForExactTokens
-                        ];
+                    // 更新UI以显示进度
+                    document.getElementById('loading-detail').textContent = `处理中: ${i}/${totalTxs} 条交易`;
+                    document.querySelector('.loading-progress-bar').style.width = `${progress}%`;
+                    
+                    // 给UI时间更新
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    
+                    for (const tx of batch) {
+                        // 如果已经有这个hash了，跳过
+                        if (hashSet.has(tx.hash)) continue;
                         
-                        const isDexRouter = DEX_ROUTER_LIST.includes(tx.to.toLowerCase());
-                        
-                        if (swapMethods.includes(methodId) || isDexRouter) {
-                            // 这可能是一个swap交易，获取交易收据检查是否涉及USDT
-                            const receipt = await getTxReceipt(tx.hash);
-                            if (receipt && receipt.logs) {
-                                const ERC20_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-                                const hasUsdtTransfer = receipt.logs.some(log => 
-                                    log.address.toLowerCase() === USDT_CONTRACT.toLowerCase() && 
-                                    log.topics[0] === ERC20_TRANSFER_TOPIC
-                                );
-                                
-                                if (hasUsdtTransfer) {
-                                    console.log(`发现swap交易涉及USDT: ${tx.hash} (方法ID: ${methodId})`);
-                                    // 为了保持格式一致，添加contractAddress字段
-                                    tx.contractAddress = USDT_CONTRACT;
-                                    mergedTxs.push(tx);
-                                    hashSet.add(tx.hash);
+                        // 检查是否是swap交易
+                        if (tx.input && tx.input.length >= 10) {
+                            const methodId = tx.input.slice(0, 10).toLowerCase();
+                            const swapMethods = [
+                                '0xa03de6a9', // 1inch callOneInch
+                                '0x7c025200', // 1inch swap
+                                '0x84bd6d29', // 1inch clipperSwap
+                                '0x12aa3caf', // 1inch swap variant
+                                '0xe449022e', // 1inch uniswapV3Swap
+                                '0x90411a32', // 1inch swap variant
+                                '0xdad12b6c', // 1inch proxySwap
+                                '0xe5e8894b', // 1inch proxySwapV2
+                                '0x7ff36ab5', // PancakeSwap swapExactETHForTokens
+                                '0x38ed1739', // PancakeSwap swapExactTokensForTokens
+                                '0x18cbafe5', // PancakeSwap swapExactTokensForETH
+                                '0x8803dbee', // PancakeSwap swapTokensForExactTokens
+                            ];
+                            
+                            const isDexRouter = DEX_ROUTER_LIST.includes(tx.to.toLowerCase());
+                            
+                            if (swapMethods.includes(methodId) || isDexRouter) {
+                                // 这可能是一个swap交易，获取交易收据检查是否涉及USDT
+                                const receipt = await getTxReceipt(tx.hash);
+                                if (receipt && receipt.logs) {
+                                    const ERC20_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+                                    const hasUsdtTransfer = receipt.logs.some(log => 
+                                        log.address.toLowerCase() === USDT_CONTRACT.toLowerCase() && 
+                                        log.topics[0] === ERC20_TRANSFER_TOPIC
+                                    );
+                                    
+                                    if (hasUsdtTransfer) {
+                                        console.log(`发现swap交易涉及USDT: ${tx.hash} (方法ID: ${methodId})`);
+                                        // 为了保持格式一致，添加contractAddress字段
+                                        tx.contractAddress = USDT_CONTRACT;
+                                        mergedTxs.push(tx);
+                                        hashSet.add(tx.hash);
+                                    }
                                 }
                             }
                         }
@@ -462,45 +593,54 @@
                 return mergedTxs;
             }
             
-            // 获取交易收据
-            async function getTxReceipt(txHash) {
-                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${getRandomApiKey()}`;
-                const res = await fetch(url);
-                const data = await res.json();
-                return data.result;
-            }
-            
-            // 获取主交易详情（含gasPrice）
-            async function getTxDetail(txHash) {
-                const url = `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${getRandomApiKey()}`;
-                const res = await fetch(url);
-                const data = await res.json();
-                return data.result;
-            }
-            
             // 解析交易数据
             async function analyzeTransactions(addressInfo, transfers, timeRange, usdtPrice, bnbPrice, usdtBalance) {
                 const grouped = groupByHash(transfers);
                 console.log(`【${addressInfo.name}】USDT转账分组（按hash）:`, grouped.map(g => g[0].hash));
                 const trades = [];
                 let totalBuy = 0, totalSell = 0, totalGasCost = 0;
-                for (const txGroup of grouped) {
+                
+                const totalTxs = grouped.length;
+                document.getElementById('loading-detail').textContent = `分析 ${addressInfo.name} 的交易: 0/${totalTxs}`;
+                document.querySelector('.loading-progress-bar').style.width = '0%';
+                
+                for (let i = 0; i < grouped.length; i++) {
+                    const progress = Math.min(100, Math.round((i / totalTxs) * 100));
+                    document.getElementById('loading-detail').textContent = `分析 ${addressInfo.name} 的交易: ${i+1}/${totalTxs}`;
+                    document.querySelector('.loading-progress-bar').style.width = `${progress}%`;
+                    
+                    const txGroup = grouped[i];
                     const tx = txGroup[0];
                     const time = parseInt(tx.timeStamp);
+                    
                     if (time < timeRange.start || time >= timeRange.end) continue;
-                    const trade = await analyzeTxGroup(txGroup, addressInfo.address);
-                    console.log(`【${addressInfo.name}】hash:${tx.hash} trade结果:`, trade);
-                    if (trade) {
-                        trades.push(trade);
-                        if (trade.isBuy) totalBuy += Math.abs(trade.usdtAmount);
-                        if (trade.isSell) totalSell += Math.abs(trade.usdtAmount);
-                        totalGasCost += trade.gasCost || 0;
+                    
+                    // 添加超时处理
+                    const tradePromise = analyzeTxGroup(txGroup, addressInfo.address);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('分析超时')), 10000)
+                    );
+                    
+                    try {
+                        const trade = await Promise.race([tradePromise, timeoutPromise]);
+                        if (trade) {
+                            trades.push(trade);
+                            if (trade.isBuy) totalBuy += Math.abs(trade.usdtAmount);
+                            if (trade.isSell) totalSell += Math.abs(trade.usdtAmount);
+                            totalGasCost += trade.gasCost || 0;
+                        }
+                    } catch (e) {
+                        console.error(`分析交易 ${tx.hash} 失败:`, e);
+                        // 继续处理下一个交易
                     }
                 }
-
+                
+                // 不需要移除progressDiv，而是清空加载详情
+                document.getElementById('loading-detail').textContent = '分析完成';
+                
                 const gasCostInUSDT = totalGasCost * bnbPrice;
                 const netProfitLoss = totalSell - totalBuy - gasCostInUSDT;
-
+                
                 const analysis = {
                     name: addressInfo.name,
                     address: addressInfo.address,
@@ -978,6 +1118,17 @@
                             note: "自动识别的1inch买入交易"
                         };
                     }
+                }
+
+                // 专门检测BaseSwapRouter + callOneInch组合
+                if (methodId === '0xa03de6a9' && tx.to.toLowerCase() === '0xb300000b72deaeb607a12d5f54773d1c19c7028d'.toLowerCase()) {
+                    console.log(`检测到特殊组合: callOneInch + BaseSwapRouter, 交易: ${tx.hash}`);
+                    
+                    // 强制设置dex为BaseSwapRouter
+                    dex = 'BaseSwapRouter';
+                    
+                    // 添加特殊处理逻辑，确保正确识别是否为卖出交易
+                    // ...与现有的内部交易检测逻辑类似...
                 }
 
                 // 通用检查 - 必须放在1inch特殊处理后
