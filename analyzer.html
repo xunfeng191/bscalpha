@@ -28,17 +28,41 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .loader {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
             margin: 20px auto;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: conic-gradient(#0000 10%, #3498db);
+            -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0);
+            mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0);
+            animation: spin 1s infinite linear;
+        }
+        .loading-text {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        .loading-progress {
+            margin-top: 10px;
+            width: 250px;
+            height: 6px;
+            background-color: #eee;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .loading-progress-bar {
+            height: 100%;
+            background-color: #3498db;
+            border-radius: 3px;
+            transition: width 0.3s ease;
         }
         .hidden {
             display: none;
@@ -84,6 +108,16 @@
                             <input type="date" class="form-control" id="date">
                             <small class="text-muted">不填默认统计今天8:00到明天8:00的数据</small>
                         </div>
+                        <div class="col-md-4">
+                            <label for="txLimit" class="form-label">交易处理限制</label>
+                            <select class="form-control" id="txLimit">
+                                <option value="50">仅处理最近50笔交易</option>
+                                <option value="100">仅处理最近100笔交易</option>
+                                <option value="200">仅处理最近200笔交易</option>
+                                <option value="all" selected>处理所有交易</option>
+                            </select>
+                            <small class="text-muted">限制处理的交易数量可以提高性能</small>
+                        </div>
                     </div>
                     <div class="row mt-3">
                         <div class="col-12">
@@ -98,7 +132,14 @@
         </div>
 
         <div id="errorMessage" class="alert alert-danger hidden" role="alert"></div>
-        <div id="loader" class="loader hidden"></div>
+        <div id="loader" class="loader hidden">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">正在分析交易数据...</div>
+            <div class="loading-progress">
+                <div class="loading-progress-bar" style="width: 0%"></div>
+            </div>
+            <div id="loading-detail" class="loading-text"></div>
+        </div>
 
         <div id="resultContainer" class="hidden">
             <div class="card mb-4">
@@ -206,7 +247,7 @@
                     for (const entry of addressEntries) {
                         try {
                             console.log(`开始获取地址 ${entry.name} (${entry.address}) 的交易...`);
-                            const transactions = await getAddressTransactions(entry.address, entry.name, timeRange, DEFAULT_API_KEY);
+                            const transactions = await getAddressTransactions(entry.address, entry.name, timeRange, DEFAULT_API_KEY, form.querySelector('#txLimit').value);
                             console.log(`地址 ${entry.name} 获取到 ${transactions.length} 条交易`);
                             allTransactions = allTransactions.concat(transactions);
                         } catch (error) {
@@ -289,6 +330,8 @@
                     loader.classList.remove('hidden');
                     submitSpinner.classList.remove('hidden');
                     document.querySelector('.normal-text').classList.add('hidden');
+                    document.querySelector('.loading-progress-bar').style.width = '0%';
+                    document.getElementById('loading-detail').textContent = '准备分析...';
                 } else {
                     loader.classList.add('hidden');
                     submitSpinner.classList.add('hidden');
@@ -325,7 +368,7 @@
             }
             
             // 获取地址交易
-            async function getAddressTransactions(address, accountName, timeRange, apiKey) {
+            async function getAddressTransactions(address, accountName, timeRange, apiKey, txLimit) {
                 const maxRetries = 3;
                 const retryDelay = 2000; // 2秒延迟
                 let lastError = null;
@@ -345,8 +388,23 @@
                         const data = await response.json();
                         
                         if (data.status === '1' && Array.isArray(data.result)) {
+                            // 先按时间筛选
+                            let transactions = data.result.filter(tx => {
+                                const txTime = parseInt(tx.timeStamp);
+                                return txTime >= timeRange.startTimestamp && txTime <= timeRange.endTimestamp;
+                            });
+                            
+                            console.log(`地址 ${address} 在选定时间范围内有 ${transactions.length} 条交易`);
+                            
+                            // 应用交易限制
+                            if (txLimit !== 'all') {
+                                const limitNum = parseInt(txLimit);
+                                transactions = transactions.slice(-limitNum);
+                                console.log(`应用交易限制，仅处理最近 ${txLimit} 笔交易`);
+                            }
+                            
                             // 添加账户名称到每个交易
-                            return data.result.map(tx => ({...tx, accountName}));
+                            return transactions.map(tx => ({...tx, accountName}));
                         } else if (data.status === '0' && data.message.includes('No transactions found')) {
                             return []; // 没有交易记录，返回空数组
                         } else if (attempt === maxRetries) {
@@ -455,6 +513,11 @@
                     timeRange: timeRange
                 };
                 
+                // 添加这三个缺失的变量定义
+                const receiptsCache = cachedData?.receiptsCache || {};
+                const internalTxCache = cachedData?.internalTxCache || {};
+                const failedTxs = cachedData?.failedTxs || [];
+                
                 const web3 = new Web3('https://bsc-dataseed.binance.org/');
                 const wbnbAddress = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c'.toLowerCase();
                 
@@ -466,19 +529,16 @@
                 
                 console.log(`开始处理总共${filteredTransactions.length}条交易`);
                 
-                // 如果有缓存数据，跳过已处理的交易
-                const startIndex = cachedData ? cachedData.processedCount : 0;
+                // 显示处理进度
+                const totalTxs = filteredTransactions.length;
+                document.getElementById('loading-detail').textContent = `分析 ${addressInfo.name} 的交易: 0/${totalTxs}`;
+                document.querySelector('.loading-progress-bar').style.width = '0%';
                 
-                // 添加交易收据缓存
-                const receiptsCache = cachedData?.receiptsCache || {};
-                
-                // 内部交易缓存
-                const internalTxCache = cachedData?.internalTxCache || {};
-                
-                // 处理失败的交易列表
-                const failedTxs = cachedData?.failedTxs || [];
-                
-                for (let i = startIndex; i < filteredTransactions.length; i++) {
+                for (let i = 0; i < filteredTransactions.length; i++) {
+                    const progress = Math.min(100, Math.round((i / totalTxs) * 100));
+                    document.getElementById('loading-detail').textContent = `分析 ${addressInfo.name} 的交易: ${i+1}/${totalTxs}`;
+                    document.querySelector('.loading-progress-bar').style.width = `${progress}%`;
+                    
                     const tx = filteredTransactions[i];
                     
                     try {
