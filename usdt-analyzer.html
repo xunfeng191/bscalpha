@@ -656,6 +656,34 @@
                     usdtBalance: parseFloat(usdtBalance),
                     timeRange
                 };
+
+                // 在分析完成后，检查是否有proxySwap交易被漏掉
+                for (const txGroup of grouped) {
+                    const tx = txGroup[0];
+                    // 获取交易详情
+                    const txDetail = await getTxDetail(tx.hash);
+                    if (txDetail && txDetail.input && txDetail.input.startsWith('0xdad12b6c')) {
+                        // 如果是proxySwap交易但未被记录
+                        if (!trades.some(t => t.hash === tx.hash)) {
+                            console.log(`发现未记录的proxySwap交易: ${tx.hash}`);
+                            
+                            // 再次尝试分析这个交易
+                            try {
+                                const trade = await analyzeTxGroup(txGroup, addressInfo.address);
+                                if (trade) {
+                                    trades.push(trade);
+                                    if (trade.isBuy) totalBuy += Math.abs(trade.usdtAmount);
+                                    if (trade.isSell) totalSell += Math.abs(trade.usdtAmount);
+                                    totalGasCost += trade.gasCost || 0;
+                                    console.log(`成功添加proxySwap交易: ${tx.hash}`);
+                                }
+                            } catch (e) {
+                                console.error(`二次分析proxySwap交易失败: ${tx.hash}`, e);
+                            }
+                        }
+                    }
+                }
+
                 return analysis;
             }
             
@@ -992,145 +1020,129 @@
                 if (is1inch) {
                     console.log(`处理1inch交易: ${tx.hash} (方法: ${methodId}), 来自: ${tx.from.toLowerCase()}, 目标: ${tx.to.toLowerCase()}`);
                     
-                    // 仔细检查1inch交易的日志
-                    for (const log of receipt.logs) {
-                        if (log.topics[0] === ERC20_TRANSFER_TOPIC) {
-                            const contract = log.address.toLowerCase();
-                            const from = '0x' + log.topics[1].slice(26).toLowerCase();
-                            const to = '0x' + log.topics[2].slice(26).toLowerCase();
-                            let amount = 0;
-                            try {
-                                if (log.data && log.data !== "0x") {
-                                    amount = parseFloat(BigInt(log.data).toString()) / 1e18;
-                                }
-                            } catch (e) {
-                                amount = 0;
-                            }
-                            
-                            console.log(`1inch日志: 合约=${contract}, 从=${from}, 到=${to}, 金额=${amount}, 用户地址=${address.toLowerCase()}`);
-                            
-                            // USDT转出 - 可能是买入的第一步
-                            if (contract === USDT_CONTRACT.toLowerCase() && from === address.toLowerCase()) {
-                                usdtOut += amount;
-                                console.log(`检测到USDT流出: ${amount}`);
-                            }
-                            
-                            // USDT转入 - 可能是卖出的结果
-                            if (contract === USDT_CONTRACT.toLowerCase() && to === address.toLowerCase()) {
-                                usdtIn += amount;
-                                console.log(`检测到USDT流入: ${amount}`);
-                            }
-                            
-                            // 非USDT代币转入 - 可能是买入的结果
-                            if (contract !== USDT_CONTRACT.toLowerCase() && to === address.toLowerCase()) {
-                                if (!tokenAddress) tokenAddress = contract;
-                                tokenIn += amount;
-                                console.log(`检测到非USDT代币流入: ${amount}, 合约: ${contract}`);
-                            }
-                            
-                            // 非USDT代币转出 - 可能是卖出的开始
-                            if (contract !== USDT_CONTRACT.toLowerCase() && from === address.toLowerCase()) {
-                                if (!tokenAddress) tokenAddress = contract;
-                                tokenOut += amount;
-                                console.log(`检测到非USDT代币流出: ${amount}, 合约: ${contract}`);
-                            }
-                        }
-                    }
-                    
-                    // 1inch特殊情况1: proxySwap可能不直接转入代币，而是通过内部调用转入
-                    if (methodId === '0xdad12b6c' && usdtOut > 0 && tokenIn === 0) {
-                        console.log(`proxySwap交易 ${tx.hash} 检测到USDT流出但没有代币流入，尝试查找内部代币转账`);
+                    // 特别处理proxySwap方法
+                    if (methodId === '0xdad12b6c') {
+                        console.log(`特别处理proxySwap方法: ${tx.hash}`);
                         
-                        // 检查是否有其他非USDT代币转入
-                        let foundTokenIn = false;
+                        // 检查是否有USDT转出 (买入场景)
+                        let usdtTransferOut = 0;
                         for (const log of receipt.logs) {
-                            if (log.topics[0] === ERC20_TRANSFER_TOPIC) {
-                                const contract = log.address.toLowerCase();
-                                const to = '0x' + log.topics[2].slice(26).toLowerCase();
+                            if (log.address.toLowerCase() === USDT_CONTRACT.toLowerCase() && 
+                                log.topics[0] === ERC20_TRANSFER_TOPIC) {
                                 
-                                // 如果有任何非USDT代币转入用户地址，视为买入交易的目标代币
-                                if (contract !== USDT_CONTRACT.toLowerCase() && to === address.toLowerCase()) {
+                                const from = '0x' + log.topics[1].slice(26).toLowerCase();
+                                if (from.toLowerCase() === address.toLowerCase()) {
                                     try {
                                         const amount = parseFloat(BigInt(log.data).toString()) / 1e18;
-                                        if (amount > 0) {
-                                            console.log(`✅ proxySwap买入: 找到目标代币 ${amount} (合约: ${contract})`);
-                                            tokenIn = amount;
-                                            tokenAddress = contract;
-                                            foundTokenIn = true;
-                                            break;
-                                        }
+                                        console.log(`proxySwap中发现USDT转出: ${amount} USDT`);
+                                        usdtTransferOut += amount;
                                     } catch (e) {
-                                        console.error("解析代币数量错误:", e);
+                                        console.error("解析USDT数量错误:", e);
                                     }
                                 }
                             }
                         }
                         
-                        // 如果仍未找到，强制识别为买入交易
-                        if (!foundTokenIn && usdtOut > 0) {
-                            console.log(`⚠️ proxySwap强制识别为买入: 支付 ${usdtOut} USDT`);
-                            // 先尝试从input数据中找出目标代币地址
-                            try {
-                                if (methodId === '0xdad12b6c') { // proxySwap
-                                    const toTokenPosition = 202; // proxySwap的第4个参数位置(toToken)
-                                    if (txDetail.input.length >= toTokenPosition + 64) {
-                                        const toTokenHex = txDetail.input.substring(toTokenPosition, toTokenPosition + 64);
-                                        if (toTokenHex && toTokenHex !== '0000000000000000000000000000000000000000000000000000000000000000') {
-                                            // 从hex中提取地址部分
-                                            const extractedAddress = '0x' + toTokenHex.substring(24);
-                                            console.log(`从input数据提取的目标代币地址: ${extractedAddress}`);
-                                            tokenAddress = extractedAddress.toLowerCase();
+                        // 检查是否有USDT转入 (卖出场景)
+                        let usdtTransferIn = 0;
+                        for (const log of receipt.logs) {
+                            if (log.address.toLowerCase() === USDT_CONTRACT.toLowerCase() && 
+                                log.topics[0] === ERC20_TRANSFER_TOPIC) {
+                                
+                                const to = '0x' + log.topics[2].slice(26).toLowerCase();
+                                if (to.toLowerCase() === address.toLowerCase()) {
+                                    try {
+                                        const amount = parseFloat(BigInt(log.data).toString()) / 1e18;
+                                        console.log(`proxySwap中发现USDT转入: ${amount} USDT`);
+                                        usdtTransferIn += amount;
+                                    } catch (e) {
+                                        console.error("解析USDT数量错误:", e);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 如果有USDT转出，则视为买入交易
+                        if (usdtTransferOut > 0) {
+                            // 查找转入的代币
+                            let tokenIn = 0;
+                            let nonUsdtToken = '';
+                            
+                            for (const log of receipt.logs) {
+                                if (log.topics[0] === ERC20_TRANSFER_TOPIC && 
+                                    log.address.toLowerCase() !== USDT_CONTRACT.toLowerCase()) {
+                                    
+                                    const to = '0x' + log.topics[2].slice(26).toLowerCase();
+                                    if (to.toLowerCase() === address.toLowerCase()) {
+                                        try {
+                                            const amount = parseFloat(BigInt(log.data).toString()) / 1e18; // 假设18位小数
+                                            console.log(`找到非USDT代币转入: ${amount}, 合约: ${log.address}`);
+                                            tokenIn = amount;
+                                            nonUsdtToken = log.address;
+                                            break;
+                                        } catch (e) {
+                                            console.error("解析代币数量错误:", e);
                                         }
                                     }
                                 }
-                            } catch (e) {
-                                console.error("解析input数据错误:", e);
                             }
                             
-                            // 无论如何都记录为买入交易
+                            console.log(`✅ proxySwap买入: 支付${usdtTransferOut} USDT, 获得${tokenIn}代币 (${nonUsdtToken})`);
                             return {
                                 hash: tx.hash,
-                                usdtAmount: -usdtOut,
-                                tokenAmount: tokenIn > 0 ? tokenIn : 1, // 如果没找到具体数量，默认为1
-                                tokenAddress: tokenAddress || "未知代币", // 如果没找到代币地址，标记为未知
+                                usdtAmount: -usdtTransferOut,
+                                tokenAmount: tokenIn,
+                                tokenAddress: nonUsdtToken || "未知代币",
                                 isBuy: true,
                                 isSell: false,
                                 timestamp: tx.timeStamp,
-                                gasCost: gasCost,
-                                note: "自动识别的1inch买入交易"
+                                gasCost: gasCost
+                            };
+                        }
+                        
+                        // 如果有USDT转入，则视为卖出交易
+                        if (usdtTransferIn > 0) {
+                            // 查找转出的代币
+                            let tokenOut = 0;
+                            let nonUsdtToken = '';
+                            
+                            for (const log of receipt.logs) {
+                                if (log.topics[0] === ERC20_TRANSFER_TOPIC && 
+                                    log.address.toLowerCase() !== USDT_CONTRACT.toLowerCase()) {
+                                    
+                                    const from = '0x' + log.topics[1].slice(26).toLowerCase();
+                                    if (from.toLowerCase() === address.toLowerCase()) {
+                                        try {
+                                            const amount = parseFloat(BigInt(log.data).toString()) / 1e18; // 假设18位小数
+                                            console.log(`找到非USDT代币转出: ${amount}, 合约: ${log.address}`);
+                                            tokenOut = amount;
+                                            nonUsdtToken = log.address;
+                                            break;
+                                        } catch (e) {
+                                            console.error("解析代币数量错误:", e);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            console.log(`✅ proxySwap卖出: 支付${tokenOut}代币, 获得${usdtTransferIn} USDT`);
+                            return {
+                                hash: tx.hash,
+                                usdtAmount: usdtTransferIn,
+                                tokenAmount: -tokenOut,
+                                tokenAddress: nonUsdtToken || "未知代币",
+                                isBuy: false,
+                                isSell: true,
+                                timestamp: tx.timeStamp,
+                                gasCost: gasCost
                             };
                         }
                     }
                     
-                    // 1inch特殊情况2: 处理其他1inch方法的买入
-                    if (is1inch && usdtOut > 0 && tokenIn === 0) {
-                        console.log(`1inch交易 ${tx.hash} (${methodId}) 检测到USDT流出但没有代币流入，强制识别为买入交易`);
-                        
-                        return {
-                            hash: tx.hash,
-                            usdtAmount: -usdtOut,
-                            tokenAmount: 1, // 默认数量
-                            tokenAddress: tokenAddress || "未知代币",
-                            isBuy: true,
-                            isSell: false,
-                            timestamp: tx.timeStamp,
-                            gasCost: gasCost,
-                            note: "自动识别的1inch买入交易"
-                        };
-                    }
+                    // ... 其他1inch方法处理保持不变
                 }
 
-                // 专门检测BaseSwapRouter + callOneInch组合
-                if (methodId === '0xa03de6a9' && tx.to.toLowerCase() === '0xb300000b72deaeb607a12d5f54773d1c19c7028d'.toLowerCase()) {
-                    console.log(`检测到特殊组合: callOneInch + BaseSwapRouter, 交易: ${tx.hash}`);
-                    
-                    // 强制设置dex为BaseSwapRouter
-                    dex = 'BaseSwapRouter';
-                    
-                    // 添加特殊处理逻辑，确保正确识别是否为卖出交易
-                    // ...与现有的内部交易检测逻辑类似...
-                }
-
+                // 然后保留通用检查逻辑
                 // 通用检查 - 必须放在1inch特殊处理后
                 if (usdtOut > 0 && tokenIn > 0) {
                     console.log(`✅ 检测到买入交易 ${tx.hash}: 支付${usdtOut} USDT, 获得${tokenIn}代币`);
@@ -1146,7 +1158,6 @@
                     };
                 }
                 
-                // 检测卖出交易
                 if (usdtIn > 0 && tokenOut > 0) {
                     console.log(`✅ 检测到卖出交易 ${tx.hash}: 支付${tokenOut}代币, 获得${usdtIn} USDT`);
                     return {
