@@ -1658,42 +1658,35 @@
                     // 用户输入日期，设置为指定日期的北京时间8:00
                     startDate = new Date(`${dateStr}T08:00:00+08:00`);
                 } else {
-                    // 正确获取当前北京时间 - 修复时间戳bug
+                    // 直接使用本地时间，不做复杂的时区转换
                     const now = new Date();
                     
                     console.log(`🕐 当前本地时间: ${now.toLocaleString()}`);
                     console.log(`🕐 当前UTC时间: ${now.toUTCString()}`);
+                    console.log(`🕐 当前时间戳: ${now.getTime()}`);
                     
-                    // 获取北京时间（UTC+8）
-                    const bjTime = new Date(now.getTime() + (8 * 60 * 60 * 1000) - (now.getTimezoneOffset() * 60 * 1000));
+                    // 直接获取当前时间的年月日
+                    const year = now.getFullYear();
+                    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+                    const day = now.getDate().toString().padStart(2, '0');
+                    const hour = now.getHours();
                     
-                    console.log(`🕐 计算的北京时间: ${bjTime.toLocaleString()}`);
-                    console.log(`🕐 北京时间小时: ${bjTime.getHours()}`);
+                    console.log(`🕐 当前年月日: ${year}-${month}-${day}, 当前小时: ${hour}`);
                     
-                    // 获取今天北京时间的日期字符串 - 使用正确的方法
-                    const year = bjTime.getFullYear();
-                    const month = (bjTime.getMonth() + 1).toString().padStart(2, '0');
-                    const day = bjTime.getDate().toString().padStart(2, '0');
-                    const bjToday = `${year}-${month}-${day}`;
-                    
-                    console.log(`📅 北京今天日期: ${bjToday}`);
-                    console.log(`🔢 北京时间: ${year}-${month}-${day} ${bjTime.getHours()}:${bjTime.getMinutes()}`);
-                    
-                    // 如果北京时间小于8点，使用昨天8点开始
-                    if (bjTime.getHours() < 8) {
-                        console.log(`🕐 北京时间未到8点，使用昨天8点开始`);
-                        const bjYesterday = new Date(bjTime);
-                        bjYesterday.setDate(bjYesterday.getDate() - 1);
-                        const yYear = bjYesterday.getFullYear();
-                        const yMonth = (bjYesterday.getMonth() + 1).toString().padStart(2, '0');
-                        const yDay = bjYesterday.getDate().toString().padStart(2, '0');
-                        const yesterdayStr = `${yYear}-${yMonth}-${yDay}`;
-                        console.log(`📅 昨天日期: ${yesterdayStr}`);
-                        startDate = new Date(`${yesterdayStr}T08:00:00+08:00`);
+                    // 如果当前时间小于8点，使用昨天8点开始
+                    if (hour < 8) {
+                        console.log(`🕐 当前时间未到8点，使用昨天8点开始`);
+                        const yesterday = new Date(now);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        const yYear = yesterday.getFullYear();
+                        const yMonth = (yesterday.getMonth() + 1).toString().padStart(2, '0');
+                        const yDay = yesterday.getDate().toString().padStart(2, '0');
+                        startDate = new Date(yYear, yesterday.getMonth(), yesterday.getDate(), 8, 0, 0);
+                        console.log(`📅 使用昨天日期: ${yYear}-${yMonth}-${yDay}`);
                     } else {
-                        console.log(`🕐 北京时间已过8点，使用今天8点开始`);
-                        console.log(`📅 使用日期: ${bjToday}`);
-                        startDate = new Date(`${bjToday}T08:00:00+08:00`);
+                        console.log(`🕐 当前时间已过8点，使用今天8点开始`);
+                        startDate = new Date(year, now.getMonth(), now.getDate(), 8, 0, 0);
+                        console.log(`📅 使用今天日期: ${year}-${month}-${day}`);
                     }
                 }
                 
@@ -1705,11 +1698,11 @@
                 const end = Math.floor(endDate.getTime() / 1000);
 
                 console.log(`🕐 最终时间范围设置:`);
-                console.log(`   开始: ${startDate.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} (${start})`);
-                console.log(`   结束: ${endDate.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} (${end})`);
+                console.log(`   开始: ${startDate.toLocaleString()} (${start})`);
+                console.log(`   结束: ${endDate.toLocaleString()} (${end})`);
                 console.log(`   总时长: ${(end - start) / 3600} 小时`);
                 
-                // 验证时间戳是否合理（应该是2023年）
+                // 验证时间戳
                 const startYear = new Date(start * 1000).getFullYear();
                 const endYear = new Date(end * 1000).getFullYear();
                 console.log(`🔍 时间戳验证: 开始年份=${startYear}, 结束年份=${endYear}`);
