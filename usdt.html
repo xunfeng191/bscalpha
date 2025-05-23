@@ -1769,7 +1769,7 @@
                         
                         const batchPromises = batch.map(async (hash) => {
                             try {
-                                await sleep(150); // 减少延迟，因为已经在Gas计算中有延迟了
+                                await sleep(100); // 🚀 优化：减少延迟，从150ms到100ms
                                 const receipt = await getTxReceipt(hash);
                                 return { hash, receipt };
                             } catch (e) {
@@ -1788,9 +1788,9 @@
                             }
                         }
                         
-                        // 批次间延迟
+                        // 🚀 优化：减少批次间延迟，从400ms到200ms
                         if (i + batchSize < needFetchHashes.length) {
-                            await sleep(400);
+                            await sleep(200); // 从400ms减少到200ms
                         }
                     }
                 } else {
@@ -1884,7 +1884,8 @@
                                 console.warn(`⚠️ ${action} API限制，等待重试... 剩余${retries-1}次`);
                                 retries--;
                                 if (retries > 0) {
-                                    await sleep(2000 + Math.random() * 2000); // 2-4秒随机延迟
+                                    // 🚀 优化：减少重试延迟，从2-4秒减少到1-2秒
+                                    await sleep(1000 + Math.random() * 1000); // 从2000+2000减少到1000+1000
                                     continue;
                                 }
                             } else {
@@ -1929,22 +1930,23 @@
                         
                         const options = { startBlock, endBlock };
                         
-                        // 并行获取三种类型的交易（但间隔调用避免API限制）
-                        console.log(`📦 获取普通交易...`);
-                        const normalTxList = await this.fetchTransactions(address, 'txlist', options);
+                        // 🚀 优化：并行获取三种类型的交易，减少等待时间  
+                        console.log(`📦 并行获取三种交易类型...`);
+                        const [normalTxResult, tokenTxResult, internalTxResult] = await Promise.allSettled([
+                            this.fetchTransactions(address, 'txlist', options),
+                            this.fetchTransactions(address, 'tokentx', {
+                                ...options,
+                                contractAddress: this.USDT_CONTRACT
+                            }),
+                            this.fetchTransactions(address, 'txlistinternal', options)
+                        ]);
                         
-                        await sleep(1000); // 1秒间隔
+                        // 处理结果，确保即使部分失败也能继续
+                        const normalTxList = normalTxResult.status === 'fulfilled' ? normalTxResult.value : [];
+                        const tokenTxList = tokenTxResult.status === 'fulfilled' ? tokenTxResult.value : [];
+                        const internalTxList = internalTxResult.status === 'fulfilled' ? internalTxResult.value : [];
                         
-                        console.log(`📦 获取USDT代币交易...`);
-                        const tokenTxList = await this.fetchTransactions(address, 'tokentx', {
-                            ...options,
-                            contractAddress: this.USDT_CONTRACT
-                        });
-                        
-                        await sleep(1000); // 1秒间隔
-                        
-                        console.log(`📦 获取内部交易...`);
-                        const internalTxList = await this.fetchTransactions(address, 'txlistinternal', options);
+                        console.log(`✅ 并行获取完成: 普通${normalTxList.length}, 代币${tokenTxList.length}, 内部${internalTxList.length}`);
                         
                         // 处理和合并交易数据
                         const processedData = this.processTransactions(address, normalTxList, internalTxList, tokenTxList, timeRange);
@@ -2045,9 +2047,9 @@
                             
                             console.log(`✅ ${entry.name}: 完成 (${addressData.stats.total}条交易)`);
                             
-                            // 地址间延迟
+                            // 🚀 优化：减少地址间延迟，从2秒减少到500ms
                             if (completed < addressEntries.length) {
-                                await sleep(2000); // 2秒延迟
+                                await sleep(500); // 从2000ms减少到500ms
                             }
                             
                         } catch (error) {
