@@ -319,18 +319,18 @@
                 const latestBlock = await web3.eth.getBlockNumber();
                 console.log(`🔍 获取到当前最新区块号: ${latestBlock}`);
                 
-                // 计算开始区块号 (当前区块号往前推7天的区块)
-                // BSC出块时间约3秒，7天约201600个区块
-                const startBlock = Math.max(0, latestBlock - 201600);
+                // 计算开始区块号 (当前区块号往前推1天的区块)
+                // BSC出块时间约3秒，1天约28800个区块
+                const startBlock = Math.max(0, latestBlock - 28800);
                 // 结束区块号使用最新区块号往后加1000个区块，以防止漏掉最新的交易
-                const endBlock = latestBlock + 1000;
+                const endBlock = latestBlock + 28800;
                 
-                console.log(`📦 计算得到区块范围: ${startBlock} - ${endBlock} (约7天数据)`);
+                console.log(`📦 计算得到区块范围: ${startBlock} - ${endBlock} (约1天数据)`);
                 return { startBlock, endBlock };
             } catch (error) {
                 console.error('获取区块号失败:', error);
                 // 使用默认值作为fallback
-                const defaultStart = Math.max(0, 50000000 - 201600); // 也使用7天的区块范围
+                const defaultStart = Math.max(0, 50000000 - 28800); // 也使用1天的区块范围
                 const defaultEnd = 50300000;
                 console.warn(`⚠️ 使用默认区块范围: ${defaultStart} - ${defaultEnd}`);
                 return { startBlock: defaultStart, endBlock: defaultEnd };
@@ -2898,6 +2898,7 @@
                 static processAllTransactions(userAddress, normalTxList, internalTxList, tokenTxList, timeRange) {
                     console.log(`⚡ 快速处理: 普通${normalTxList.length}, 内部${internalTxList.length}, 代币${tokenTxList.length}`);
                     console.log(`⏰ 时间范围: ${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}`);
+                    console.log(`⏰ 时间戳范围: start=${timeRange.start}, end=${timeRange.end}`);
                     
                     // 使用Map进行高效的哈希查找
                     const txMap = new Map();
@@ -2906,8 +2907,16 @@
                     // 1. 处理普通交易 - 提取基础信息和BNB流向
                     normalTxList.forEach(tx => {
                         const time = parseInt(tx.timeStamp);
-                        // 使用时间戳进行过滤 - 修改过滤逻辑
-                        if (time < timeRange.start || time > timeRange.end) {
+                        // 调试时间戳转换
+                        console.log(`🔍 交易时间戳调试 [${tx.hash}]:`);
+                        console.log(`   原始时间戳: ${tx.timeStamp} (${typeof tx.timeStamp})`);
+                        console.log(`   解析后时间戳: ${time} (${typeof time})`);
+                        console.log(`   转换为日期: ${new Date(time * 1000).toLocaleString()}`);
+                        console.log(`   时间范围检查: ${time} vs [${timeRange.start} - ${timeRange.end}]`);
+                        console.log(`   检查结果: ${time < timeRange.start ? '早于开始时间' : time >= timeRange.end ? '晚于或等于结束时间' : '在范围内'}`);
+                        
+                        // 使用时间戳进行过滤
+                        if (time < timeRange.start || time >= timeRange.end) {
                             console.log(`⏰ 过滤普通交易 ${tx.hash}: ${new Date(time * 1000).toLocaleString()} 不在时间范围内 [${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}]`);
                             return;
                         }
@@ -2951,7 +2960,7 @@
                     internalTxList.forEach(tx => {
                         const time = parseInt(tx.timeStamp);
                         // 使用时间戳进行过滤 - 修改过滤逻辑
-                        if (time < timeRange.start || time > timeRange.end) {
+                        if (time < timeRange.start || time >= timeRange.end) {
                             console.log(`⏰ 过滤内部交易 ${tx.hash}: ${new Date(time * 1000).toLocaleString()} 不在时间范围内 [${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}]`);
                             return;
                         }
@@ -3003,7 +3012,7 @@
                     tokenTxList.forEach(tx => {
                         const time = parseInt(tx.timeStamp);
                         // 使用时间戳进行过滤 - 修改过滤逻辑
-                        if (time < timeRange.start || time > timeRange.end) {
+                        if (time < timeRange.start || time >= timeRange.end) {
                             console.log(`⏰ 过滤代币交易 ${tx.hash}: ${new Date(time * 1000).toLocaleString()} 不在时间范围内 [${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}]`);
                             return;
                         }
