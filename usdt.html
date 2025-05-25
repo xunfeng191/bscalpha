@@ -309,6 +309,34 @@
             // ... 其他地址 ...
         };
 
+        // 添加Web3实例
+        const web3 = new Web3('https://bsc-dataseed.binance.org/');
+
+        // 修改区块号获取函数
+        async function getBlockNumber() {
+            try {
+                // 获取最新区块号
+                const latestBlock = await web3.eth.getBlockNumber();
+                console.log(`🔍 获取到当前最新区块号: ${latestBlock}`);
+                
+                // 计算开始区块号 (当前区块号往前推7天的区块)
+                // BSC出块时间约3秒，7天约201600个区块
+                const startBlock = Math.max(0, latestBlock - 201600);
+                // 结束区块号使用最新区块号往后加1000个区块，以防止漏掉最新的交易
+                const endBlock = latestBlock + 1000;
+                
+                console.log(`📦 计算得到区块范围: ${startBlock} - ${endBlock} (约7天数据)`);
+                return { startBlock, endBlock };
+            } catch (error) {
+                console.error('获取区块号失败:', error);
+                // 使用默认值作为fallback
+                const defaultStart = Math.max(0, 50000000 - 201600); // 也使用7天的区块范围
+                const defaultEnd = 50300000;
+                console.warn(`⚠️ 使用默认区块范围: ${defaultStart} - ${defaultEnd}`);
+                return { startBlock: defaultStart, endBlock: defaultEnd };
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('analyzeForm');
             const loader = document.getElementById('loader');
@@ -1651,67 +1679,71 @@
 
             // 使用明确的时间范围函数
             function getTimeRange(dateStr = '') {
-                // 获取北京时间当天8:00到次日8:00的时间戳区间
+                // 获取北京时间当天8:00到次日7:59:59的时间戳区间
                 let startDate, endDate;
 
                 if (dateStr) {
                     // 用户输入日期，设置为指定日期的北京时间8:00
                     startDate = new Date(`${dateStr}T08:00:00+08:00`);
                 } else {
-                    // 直接使用本地时间，不做复杂的时区转换
+                    // 获取当前北京时间
                     const now = new Date();
+                    const beijingOffset = 8 * 60; // 北京时区偏移（分钟）
+                    const localOffset = now.getTimezoneOffset(); // 本地时区偏移（分钟）
+                    const totalOffset = beijingOffset + localOffset; // 需要调整的总偏移（分钟）
+                    
+                    // 转换为北京时间
+                    const beijingTime = new Date(now.getTime() + totalOffset * 60 * 1000);
                     
                     console.log(`🕐 当前本地时间: ${now.toLocaleString()}`);
                     console.log(`🕐 当前UTC时间: ${now.toUTCString()}`);
-                    console.log(`🕐 当前时间戳: ${now.getTime()}`);
+                    console.log(`🕐 转换后北京时间: ${beijingTime.toLocaleString()}`);
                     
-                    // 直接获取当前时间的年月日
-                    const year = now.getFullYear();
-                    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-                    const day = now.getDate().toString().padStart(2, '0');
-                    const hour = now.getHours();
+                    // 获取北京时间的年月日
+                    const year = beijingTime.getFullYear();
+                    const month = (beijingTime.getMonth() + 1).toString().padStart(2, '0');
+                    const day = beijingTime.getDate().toString().padStart(2, '0');
+                    const hour = beijingTime.getHours();
                     
-                    console.log(`🕐 当前年月日: ${year}-${month}-${day}, 当前小时: ${hour}`);
+                    console.log(`🕐 北京时间: ${year}-${month}-${day} ${hour}:${beijingTime.getMinutes()}`);
                     
-                    // 如果当前时间小于8点，使用昨天8点开始
+                    // 如果当前时间在8:00之前，使用前一天8:00到今天7:59:59
                     if (hour < 8) {
-                        console.log(`🕐 当前时间未到8点，使用昨天8点开始`);
-                        const yesterday = new Date(now);
+                        console.log(`🕐 北京时间未到8点，使用昨天8点到今天7:59:59`);
+                        const yesterday = new Date(beijingTime);
                         yesterday.setDate(yesterday.getDate() - 1);
                         const yYear = yesterday.getFullYear();
                         const yMonth = (yesterday.getMonth() + 1).toString().padStart(2, '0');
                         const yDay = yesterday.getDate().toString().padStart(2, '0');
-                        startDate = new Date(yYear, yesterday.getMonth(), yesterday.getDate(), 8, 0, 0);
-                        console.log(`📅 使用昨天日期: ${yYear}-${yMonth}-${yDay}`);
+                        const yesterdayStr = `${yYear}-${yMonth}-${yDay}`;
+                        console.log(`📅 使用昨天日期: ${yesterdayStr}`);
+                        startDate = new Date(`${yesterdayStr}T08:00:00+08:00`);
                     } else {
-                        console.log(`🕐 当前时间已过8点，使用今天8点开始`);
-                        startDate = new Date(year, now.getMonth(), now.getDate(), 8, 0, 0);
-                        console.log(`📅 使用今天日期: ${year}-${month}-${day}`);
+                        // 如果当前时间在8:00之后，使用今天8:00到明天7:59:59
+                        console.log(`🕐 北京时间已过8点，使用今天8点到明天7:59:59`);
+                        const todayStr = `${year}-${month}-${day}`;
+                        console.log(`📅 使用今天日期: ${todayStr}`);
+                        startDate = new Date(`${todayStr}T08:00:00+08:00`);
                     }
                 }
                 
-                // 结束时间是开始时间+24小时
-                endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+                // 结束时间是开始时间+24小时-1秒（即次日7:59:59）
+                endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000 - 1000);
 
                 // 转为秒级时间戳
                 const start = Math.floor(startDate.getTime() / 1000);
                 const end = Math.floor(endDate.getTime() / 1000);
 
                 console.log(`🕐 最终时间范围设置:`);
-                console.log(`   开始: ${startDate.toLocaleString()} (${start})`);
-                console.log(`   结束: ${endDate.toLocaleString()} (${end})`);
+                console.log(`   开始: ${new Date(start * 1000).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} (${start})`);
+                console.log(`   结束: ${new Date(end * 1000).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})} (${end})`);
                 console.log(`   总时长: ${(end - start) / 3600} 小时`);
-                
-                // 验证时间戳
-                const startYear = new Date(start * 1000).getFullYear();
-                const endYear = new Date(end * 1000).getFullYear();
-                console.log(`🔍 时间戳验证: 开始年份=${startYear}, 结束年份=${endYear}`);
 
-                return {
-                    start,
+                return { 
+                    start, 
                     end,
-                    startDate,
-                    endDate
+                    startDate: new Date(start * 1000),
+                    endDate: new Date(end * 1000)
                 };
             }
 
@@ -1983,18 +2015,9 @@
                     try {
                         console.log(`🚀 获取 ${address.slice(0, 8)}... 的完整交易数据（USDT+USDC）`);
                         
-                        // 计算区块范围
-                        let startBlock, endBlock;
-                        try {
-                            [startBlock, endBlock] = await Promise.all([
-                                getBlockByTimestamp(timeRange.start, 'before'),
-                                getBlockByTimestamp(timeRange.end, 'after')
-                            ]);
-                        } catch (e) {
-                            console.warn(`⚠️ 区块号获取失败，使用固定范围`);
-                            startBlock = 50000000;
-                            endBlock = 50300000;
-                        }
+                        // 使用Web3获取区块范围
+                        const { startBlock, endBlock } = await getBlockNumber();
+                        console.log(`📦 使用区块范围: ${startBlock} - ${endBlock}`);
                         
                         const options = { startBlock, endBlock };
                         
@@ -2874,6 +2897,7 @@
                  */
                 static processAllTransactions(userAddress, normalTxList, internalTxList, tokenTxList, timeRange) {
                     console.log(`⚡ 快速处理: 普通${normalTxList.length}, 内部${internalTxList.length}, 代币${tokenTxList.length}`);
+                    console.log(`⏰ 时间范围: ${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}`);
                     
                     // 使用Map进行高效的哈希查找
                     const txMap = new Map();
@@ -2882,7 +2906,11 @@
                     // 1. 处理普通交易 - 提取基础信息和BNB流向
                     normalTxList.forEach(tx => {
                         const time = parseInt(tx.timeStamp);
-                        if (time < timeRange.start || time >= timeRange.end) return;
+                        // 使用时间戳进行过滤 - 修改过滤逻辑
+                        if (time < timeRange.start || time > timeRange.end) {
+                            console.log(`⏰ 过滤普通交易 ${tx.hash}: ${new Date(time * 1000).toLocaleString()} 不在时间范围内 [${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}]`);
+                            return;
+                        }
                         
                         const tokens = new Map();
                         
@@ -2915,14 +2943,18 @@
                             tokens: tokens,
                             gasFee: gasFee,
                             txType: 'normal',
-                            needsReceiptAnalysis: isPotentialDEXTx // 🚀 标记需要receipt分析
+                            needsReceiptAnalysis: isPotentialDEXTx
                         });
                     });
                     
                     // 2. 合并内部交易信息
                     internalTxList.forEach(tx => {
                         const time = parseInt(tx.timeStamp);
-                        if (time < timeRange.start || time >= timeRange.end) return;
+                        // 使用时间戳进行过滤 - 修改过滤逻辑
+                        if (time < timeRange.start || time > timeRange.end) {
+                            console.log(`⏰ 过滤内部交易 ${tx.hash}: ${new Date(time * 1000).toLocaleString()} 不在时间范围内 [${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}]`);
+                            return;
+                        }
                         
                         const isUserInvolved = tx.from?.toLowerCase() === addressLower || 
                                              tx.to?.toLowerCase() === addressLower;
@@ -2970,7 +3002,11 @@
                     // 3. 合并代币交易信息
                     tokenTxList.forEach(tx => {
                         const time = parseInt(tx.timeStamp);
-                        if (time < timeRange.start || time >= timeRange.end) return;
+                        // 使用时间戳进行过滤 - 修改过滤逻辑
+                        if (time < timeRange.start || time > timeRange.end) {
+                            console.log(`⏰ 过滤代币交易 ${tx.hash}: ${new Date(time * 1000).toLocaleString()} 不在时间范围内 [${new Date(timeRange.start * 1000).toLocaleString()} - ${new Date(timeRange.end * 1000).toLocaleString()}]`);
+                            return;
+                        }
                         
                         const isUserInvolved = tx.from?.toLowerCase() === addressLower || 
                                              tx.to?.toLowerCase() === addressLower;
@@ -2980,7 +3016,7 @@
                         const tokenAddress = tx.contractAddress || '';
                         const tokenValue = parseFloat(tx.value) / Math.pow(10, parseInt(tx.tokenDecimal || 18));
                         
-                        console.log(`🪙 处理代币交易: ${tx.hash}, 代币: ${tokenSymbol}, 金额: ${tokenValue}, 合约: ${tokenAddress}`);
+                        console.log(`🪙 处理代币交易: ${tx.hash}, 代币: ${tokenSymbol}, 金额: ${tokenValue}, 合约: ${tokenAddress}, 时间: ${new Date(time * 1000).toLocaleString()}`);
                         
                         if (txMap.has(tx.hash)) {
                             // 合并到现有交易
@@ -3014,8 +3050,6 @@
                                 outflow: tx.from?.toLowerCase() === addressLower ? tokenValue : 0,
                                 address: tokenAddress
                             });
-                            
-                            console.log(`  🆕 新建代币交易: ${tokenSymbol}, 流入: ${tokens.get(tokenSymbol).inflow}, 流出: ${tokens.get(tokenSymbol).outflow}`);
                             
                             txMap.set(tx.hash, {
                                 hash: tx.hash,
@@ -3557,4 +3591,3 @@
     </script>
 </body>
 </html>
-
